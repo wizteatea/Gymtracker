@@ -1,47 +1,36 @@
-// Simple localStorage wrapper with JSON support
-const store = {
-  get(key, fallback = null) {
+import {
+  fsUpsertWorkout, fsDeleteWorkout,
+  fsUpsertSchedule, fsDeleteSchedule,
+  fsAddHistory, fsDeleteHistory,
+  fsUpsertCustomExercise,
+  pullProfileFromFirestore,
+  pushProfileToFirestore,
+} from './firestore'
+
+// ── localStorage wrapper ──
+const ls = {
+  get: (key, fallback = null) => {
     try {
       const val = localStorage.getItem(key)
       return val ? JSON.parse(val) : fallback
-    } catch {
-      return fallback
-    }
+    } catch { return fallback }
   },
-  set(key, value) {
-    localStorage.setItem(key, JSON.stringify(value))
-  },
-  remove(key) {
-    localStorage.removeItem(key)
-  }
+  set: (key, value) => localStorage.setItem(key, JSON.stringify(value)),
+  remove: (key) => localStorage.removeItem(key),
 }
 
-// ── Profiles ──
-export function getProfiles() {
-  return store.get('gym_profiles', [])
-}
-
-export function saveProfiles(profiles) {
-  store.set('gym_profiles', profiles)
-}
-
-export function getActiveProfileId() {
-  return store.get('gym_active_profile', null)
-}
-
-export function setActiveProfileId(id) {
-  store.set('gym_active_profile', id)
-}
+// ── Profiles (local only — lightweight) ──
+export function getProfiles() { return ls.get('gym_profiles', []) }
+export function saveProfiles(profiles) { ls.set('gym_profiles', profiles) }
+export function getActiveProfileId() { return ls.get('gym_active_profile', null) }
+export function setActiveProfileId(id) { ls.set('gym_active_profile', id) }
 
 export function createProfile(data) {
   const profiles = getProfiles()
-  const profile = {
-    id: crypto.randomUUID(),
-    ...data,
-    createdAt: new Date().toISOString()
-  }
+  const profile = { id: crypto.randomUUID(), ...data, createdAt: new Date().toISOString() }
   profiles.push(profile)
   saveProfiles(profiles)
+  pushProfileToFirestore(profile.id, profile)
   return profile
 }
 
@@ -51,35 +40,37 @@ export function updateProfile(id, data) {
   if (idx !== -1) {
     profiles[idx] = { ...profiles[idx], ...data }
     saveProfiles(profiles)
+    pushProfileToFirestore(id, profiles[idx])
   }
   return profiles[idx]
 }
 
 export function deleteProfile(id) {
   saveProfiles(getProfiles().filter(p => p.id !== id))
-  if (getActiveProfileId() === id) {
-    store.remove('gym_active_profile')
-  }
+  if (getActiveProfileId() === id) ls.remove('gym_active_profile')
 }
 
-// ── Workouts (templates) ──
-export function getWorkouts(profileId) {
-  return store.get(`gym_workouts_${profileId}`, [])
+// ── Sync: pull from Firestore and write to localStorage ──
+export async function syncFromFirestore(profileId) {
+  const remote = await pullProfileFromFirestore(profileId)
+  if (!remote) return false
+
+  ls.set(`gym_workouts_${profileId}`, remote.workouts)
+  ls.set(`gym_schedule_${profileId}`, remote.schedule)
+  ls.set(`gym_history_${profileId}`, remote.history)
+  ls.set(`gym_custom_exercises_${profileId}`, remote.customExercises)
+  return true
 }
 
-export function saveWorkouts(profileId, workouts) {
-  store.set(`gym_workouts_${profileId}`, workouts)
-}
+// ── Workouts ──
+export function getWorkouts(profileId) { return ls.get(`gym_workouts_${profileId}`, []) }
 
 export function createWorkout(profileId, data) {
   const workouts = getWorkouts(profileId)
-  const workout = {
-    id: crypto.randomUUID(),
-    ...data,
-    createdAt: new Date().toISOString()
-  }
+  const workout = { id: crypto.randomUUID(), ...data, createdAt: new Date().toISOString() }
   workouts.push(workout)
-  saveWorkouts(profileId, workouts)
+  ls.set(`gym_workouts_${profileId}`, workouts)
+  fsUpsertWorkout(profileId, workout)
   return workout
 }
 
@@ -88,12 +79,14 @@ export function updateWorkout(profileId, workoutId, data) {
   const idx = workouts.findIndex(w => w.id === workoutId)
   if (idx !== -1) {
     workouts[idx] = { ...workouts[idx], ...data }
-    saveWorkouts(profileId, workouts)
+    ls.set(`gym_workouts_${profileId}`, workouts)
+    fsUpsertWorkout(profileId, workouts[idx])
   }
 }
 
 export function deleteWorkout(profileId, workoutId) {
-  saveWorkouts(profileId, getWorkouts(profileId).filter(w => w.id !== workoutId))
+  ls.set(`gym_workouts_${profileId}`, getWorkouts(profileId).filter(w => w.id !== workoutId))
+  fsDeleteWorkout(profileId, workoutId)
 }
 
 export function duplicateWorkout(profileId, workoutId) {
@@ -104,69 +97,58 @@ export function duplicateWorkout(profileId, workoutId) {
     ...JSON.parse(JSON.stringify(original)),
     id: crypto.randomUUID(),
     title: original.title + ' (copie)',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
   }
   workouts.push(copy)
-  saveWorkouts(profileId, workouts)
+  ls.set(`gym_workouts_${profileId}`, workouts)
+  fsUpsertWorkout(profileId, copy)
   return copy
 }
 
-// ── Scheduled sessions (calendar) ──
-export function getSchedule(profileId) {
-  return store.get(`gym_schedule_${profileId}`, [])
-}
-
-export function saveSchedule(profileId, schedule) {
-  store.set(`gym_schedule_${profileId}`, schedule)
-}
+// ── Schedule ──
+export function getSchedule(profileId) { return ls.get(`gym_schedule_${profileId}`, []) }
 
 export function scheduleWorkout(profileId, workoutId, date) {
   const schedule = getSchedule(profileId)
-  schedule.push({
-    id: crypto.randomUUID(),
-    workoutId,
-    date, // YYYY-MM-DD
-    completed: false
-  })
-  saveSchedule(profileId, schedule)
+  const entry = { id: crypto.randomUUID(), workoutId, date, completed: false }
+  schedule.push(entry)
+  ls.set(`gym_schedule_${profileId}`, schedule)
+  fsUpsertSchedule(profileId, entry)
 }
 
 export function removeScheduledWorkout(profileId, scheduleId) {
-  saveSchedule(profileId, getSchedule(profileId).filter(s => s.id !== scheduleId))
+  ls.set(`gym_schedule_${profileId}`, getSchedule(profileId).filter(s => s.id !== scheduleId))
+  fsDeleteSchedule(profileId, scheduleId)
 }
 
-// ── Session history (completed workouts) ──
-export function getHistory(profileId) {
-  return store.get(`gym_history_${profileId}`, [])
-}
+// ── History ──
+export function getHistory(profileId) { return ls.get(`gym_history_${profileId}`, []) }
 
 export function saveHistory(profileId, history) {
-  store.set(`gym_history_${profileId}`, history)
+  ls.set(`gym_history_${profileId}`, history)
 }
 
 export function addSessionToHistory(profileId, session) {
   const history = getHistory(profileId)
-  history.unshift({
-    id: crypto.randomUUID(),
-    ...session,
-    completedAt: new Date().toISOString()
-  })
-  saveHistory(profileId, history)
+  const entry = { id: crypto.randomUUID(), ...session, completedAt: new Date().toISOString() }
+  history.unshift(entry)
+  ls.set(`gym_history_${profileId}`, history)
+  fsAddHistory(profileId, entry)
+}
+
+export function deleteHistoryEntry(profileId, id) {
+  saveHistory(profileId, getHistory(profileId).filter(h => h.id !== id))
+  fsDeleteHistory(profileId, id)
 }
 
 // ── Custom exercises ──
-export function getCustomExercises(profileId) {
-  return store.get(`gym_custom_exercises_${profileId}`, [])
-}
-
-export function saveCustomExercises(profileId, exercises) {
-  store.set(`gym_custom_exercises_${profileId}`, exercises)
-}
+export function getCustomExercises(profileId) { return ls.get(`gym_custom_exercises_${profileId}`, []) }
 
 export function addCustomExercise(profileId, exercise) {
   const exercises = getCustomExercises(profileId)
   const newEx = { id: crypto.randomUUID(), custom: true, ...exercise }
   exercises.push(newEx)
-  saveCustomExercises(profileId, exercises)
+  ls.set(`gym_custom_exercises_${profileId}`, exercises)
+  fsUpsertCustomExercise(profileId, newEx)
   return newEx
 }

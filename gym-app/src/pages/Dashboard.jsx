@@ -7,7 +7,7 @@ import { format, isToday, isFuture, parseISO, startOfDay } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
 export default function Dashboard() {
-  const { profile, profileId, refreshKey } = useApp()
+  const { profile, profileId, refreshKey, syncing } = useApp()
   const navigate = useNavigate()
 
   const workouts = useMemo(() => getWorkouts(profileId), [profileId, refreshKey])
@@ -49,7 +49,18 @@ export default function Dashboard() {
   return (
     <div className="page">
       <div style={{ marginBottom: 24 }}>
-        <div className="text-secondary text-sm">Bonjour,</div>
+        <div className="flex items-center justify-between">
+          <div className="text-secondary text-sm">Bonjour,</div>
+          {syncing && (
+            <div className="text-xs text-muted flex items-center gap-8">
+              <span style={{
+                display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                background: 'var(--accent)', animation: 'pulse 1s infinite'
+              }} />
+              Synchronisation...
+            </div>
+          )}
+        </div>
         <h1 style={{ fontSize: 26, fontWeight: 800 }}>{profile?.prenom} 👋</h1>
       </div>
 
