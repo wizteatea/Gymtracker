@@ -59,10 +59,11 @@ export default function SessionPage() {
 
   // Load workout
   useEffect(() => {
-    if (!workoutId) { navigate('/'); return }
+    if (finished) return
+    if (!workoutId) { navigate('/', { replace: true }); return }
     const workouts = getWorkouts(profileId)
     const w = workouts.find(ww => ww.id === workoutId)
-    if (!w) { navigate('/'); return }
+    if (!w) { navigate('/', { replace: true }); return }
     setWorkout(w)
 
     // Only init setsData if fresh start (not resumed)
@@ -208,7 +209,7 @@ export default function SessionPage() {
             <div className="text-xs text-muted">Séries</div>
           </div>
         </div>
-        <button className="btn btn-primary mt-16" onClick={() => navigate('/')}>
+        <button className="btn btn-primary mt-16" onClick={() => navigate('/', { replace: true })}>
           Retour à l'accueil
         </button>
       </div>
