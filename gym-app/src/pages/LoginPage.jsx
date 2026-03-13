@@ -11,11 +11,10 @@ export default function LoginPage() {
     setLoading(true)
     getRedirectResult(auth)
       .then((result) => {
-        // If result exists, Firebase Auth handles the state change automatically
         if (!result) setLoading(false)
       })
       .catch((e) => {
-        setError('Connexion échouée. Réessaie.')
+        setError(`Erreur: ${e.code} — ${e.message}`)
         setLoading(false)
       })
   }, [])
