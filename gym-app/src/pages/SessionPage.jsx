@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Check, Plus, Minus, Play, Pause, SkipForward, X, Timer } from 'lucide-react'
+import { ArrowLeft, Check, Plus, SkipForward, Timer } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { getWorkouts, addSessionToHistory } from '../data/store'
+
+const SESSION_KEY = 'gym_active_session'
 
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60)
@@ -17,41 +19,85 @@ function formatDuration(seconds) {
   return `${m} min`
 }
 
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+function saveSession(data) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(data))
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY)
+}
+
 export default function SessionPage() {
   const { profileId, refresh } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
-  const workoutId = location.state?.workoutId
+  const workoutIdFromNav = location.state?.workoutId
+
+  // Try to restore a saved session, or start a new one
+  const saved = loadSession()
+  const isResume = !workoutIdFromNav && saved && saved.profileId === profileId
+  const workoutId = workoutIdFromNav || saved?.workoutId
 
   const [workout, setWorkout] = useState(null)
-  const [currentExIdx, setCurrentExIdx] = useState(0)
-  const [setsData, setSetsData] = useState([]) // Array of arrays, one per exercise
+  const [currentExIdx, setCurrentExIdx] = useState(saved?.currentExIdx || 0)
+  const [setsData, setSetsData] = useState(saved?.setsData || [])
   const [showRest, setShowRest] = useState(false)
   const [restTime, setRestTime] = useState(0)
   const [restTotal, setRestTotal] = useState(0)
-  const [sessionStart] = useState(Date.now())
+  const [sessionStart] = useState(() => saved?.sessionStart || Date.now())
   const [elapsed, setElapsed] = useState(0)
   const [finished, setFinished] = useState(false)
   const restInterval = useRef(null)
+  const initialized = useRef(false)
 
+  // Load workout
   useEffect(() => {
     if (!workoutId) { navigate('/'); return }
     const workouts = getWorkouts(profileId)
     const w = workouts.find(ww => ww.id === workoutId)
     if (!w) { navigate('/'); return }
     setWorkout(w)
-    // Init sets data: for each exercise, create array of sets
-    setSetsData(w.exercises.map(ex => {
-      if (ex.type === 'cardio') {
-        return [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
+
+    // Only init setsData if fresh start (not resumed)
+    if (!initialized.current) {
+      initialized.current = true
+      if (isResume && saved?.setsData) {
+        setSetsData(saved.setsData)
+        setCurrentExIdx(saved.currentExIdx || 0)
+      } else {
+        setSetsData(w.exercises.map(ex => {
+          if (ex.type === 'cardio') {
+            return [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
+          }
+          return Array.from({ length: ex.sets }, () => ({
+            weight: 0,
+            reps: ex.reps,
+            done: false,
+          }))
+        }))
       }
-      return Array.from({ length: ex.sets }, () => ({
-        weight: 0,
-        reps: ex.reps,
-        done: false,
-      }))
-    }))
-  }, [workoutId, profileId, navigate])
+    }
+  }, [workoutId, profileId, navigate, isResume, saved])
+
+  // Persist session to localStorage on every change
+  useEffect(() => {
+    if (workout && setsData.length > 0 && !finished) {
+      saveSession({
+        profileId,
+        workoutId,
+        currentExIdx,
+        setsData,
+        sessionStart,
+      })
+    }
+  }, [profileId, workoutId, currentExIdx, setsData, sessionStart, workout, finished])
 
   // Elapsed timer
   useEffect(() => {
@@ -66,7 +112,6 @@ export default function SessionPage() {
         setRestTime(prev => {
           if (prev <= 1) {
             clearInterval(restInterval.current)
-            // Vibrate if available
             if (navigator.vibrate) navigator.vibrate([200, 100, 200])
             return 0
           }
@@ -90,7 +135,6 @@ export default function SessionPage() {
 
   const validateSet = (setIdx) => {
     updateSet(setIdx, 'done', true)
-    // Start rest timer
     if (currentEx?.type !== 'cardio' && currentEx?.rest) {
       setRestTime(currentEx.rest)
       setRestTotal(currentEx.rest)
@@ -108,19 +152,15 @@ export default function SessionPage() {
   }
 
   const nextExercise = () => {
-    if (currentExIdx < workout.exercises.length - 1) {
-      setCurrentExIdx(currentExIdx + 1)
-    }
+    if (currentExIdx < workout.exercises.length - 1) setCurrentExIdx(currentExIdx + 1)
   }
 
   const prevExercise = () => {
-    if (currentExIdx > 0) {
-      setCurrentExIdx(currentExIdx - 1)
-    }
+    if (currentExIdx > 0) setCurrentExIdx(currentExIdx - 1)
   }
 
   const finishSession = () => {
-    const duration = formatDuration(Math.floor((Date.now() - sessionStart) / 1000))
+    const durationSec = Math.floor((Date.now() - sessionStart) / 1000)
     addSessionToHistory(profileId, {
       workoutId,
       workoutTitle: workout.title,
@@ -128,16 +168,25 @@ export default function SessionPage() {
         ...ex,
         setsCompleted: setsData[i],
       })),
-      duration,
-      durationSeconds: Math.floor((Date.now() - sessionStart) / 1000),
+      duration: formatDuration(durationSec),
+      durationSeconds: durationSec,
     })
+    clearSession()
     refresh()
     setFinished(true)
+  }
+
+  const abandonSession = () => {
+    if (confirm('Abandonner la séance ? Ta progression sera perdue.')) {
+      clearSession()
+      navigate('/')
+    }
   }
 
   if (!workout) return null
 
   if (finished) {
+    const durationSec = Math.floor((Date.now() - sessionStart) / 1000)
     return (
       <div className="page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', textAlign: 'center' }}>
         <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
@@ -145,7 +194,7 @@ export default function SessionPage() {
         <p className="text-secondary mb-16">{workout.title}</p>
         <div className="card w-full" style={{ display: 'flex', justifyContent: 'space-around', padding: 20 }}>
           <div className="text-center">
-            <div style={{ fontSize: 24, fontWeight: 700 }}>{formatDuration(Math.floor((Date.now() - sessionStart) / 1000))}</div>
+            <div style={{ fontSize: 24, fontWeight: 700 }}>{formatDuration(durationSec)}</div>
             <div className="text-xs text-muted">Durée</div>
           </div>
           <div className="text-center">
@@ -175,8 +224,7 @@ export default function SessionPage() {
     <div className="page" style={{ paddingBottom: 16 }}>
       {/* Header */}
       <div className="flex items-center gap-12 mb-8">
-        <button onClick={() => { if (confirm('Quitter la séance ?')) navigate(-1) }}
-          style={{ background: 'none', color: 'var(--text)' }}>
+        <button onClick={abandonSession} style={{ background: 'none', color: 'var(--text)' }}>
           <ArrowLeft size={24} />
         </button>
         <div style={{ flex: 1 }}>
@@ -322,7 +370,6 @@ export default function SessionPage() {
           <div className="rest-timer-time" style={{ color: restTime === 0 ? 'var(--success)' : 'var(--text)' }}>
             {formatTime(restTime)}
           </div>
-          {/* Progress circle */}
           <div style={{ width: 120, height: 120, position: 'relative' }}>
             <svg viewBox="0 0 120 120" style={{ transform: 'rotate(-90deg)' }}>
               <circle cx="60" cy="60" r="54" fill="none" stroke="var(--bg-input)" strokeWidth="6" />

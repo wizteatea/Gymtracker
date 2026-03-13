@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Play, Plus, Calendar, Clock, Dumbbell, TrendingUp } from 'lucide-react'
+import { Play, Plus, Calendar, Clock, Dumbbell, TrendingUp, RotateCcw } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { getWorkouts, getSchedule, getHistory } from '../data/store'
 import { format, isToday, isFuture, parseISO, startOfDay } from 'date-fns'
@@ -13,6 +13,19 @@ export default function Dashboard() {
   const workouts = useMemo(() => getWorkouts(profileId), [profileId, refreshKey])
   const schedule = useMemo(() => getSchedule(profileId), [profileId, refreshKey])
   const history = useMemo(() => getHistory(profileId), [profileId, refreshKey])
+
+  // Check for active session
+  const activeSession = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('gym_active_session')
+      if (!raw) return null
+      const data = JSON.parse(raw)
+      if (data.profileId !== profileId) return null
+      const w = workouts.find(ww => ww.id === data.workoutId)
+      if (!w) return null
+      return { ...data, workoutTitle: w.title }
+    } catch { return null }
+  }, [profileId, workouts, refreshKey])
 
   // Find next scheduled workout
   const today = startOfDay(new Date())
@@ -39,6 +52,25 @@ export default function Dashboard() {
         <div className="text-secondary text-sm">Bonjour,</div>
         <h1 style={{ fontSize: 26, fontWeight: 800 }}>{profile?.prenom} 👋</h1>
       </div>
+
+      {/* Resume active session */}
+      {activeSession && (
+        <div className="card" style={{
+          background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+          marginBottom: 16, cursor: 'pointer'
+        }} onClick={() => navigate('/session')}>
+          <div className="flex items-center gap-12">
+            <RotateCcw size={24} color="white" />
+            <div style={{ flex: 1 }}>
+              <div style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>Séance en cours</div>
+              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>
+                {activeSession.workoutTitle} · Reprendre
+              </div>
+            </div>
+            <Play size={20} color="white" />
+          </div>
+        </div>
+      )}
 
       {/* Next workout */}
       {nextWorkout && (
