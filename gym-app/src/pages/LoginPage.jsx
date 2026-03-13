@@ -1,20 +1,29 @@
-import { useState } from 'react'
-import { signInWithPopup } from 'firebase/auth'
+import { useState, useEffect } from 'react'
+import { signInWithRedirect, getRedirectResult } from 'firebase/auth'
 import { auth, googleProvider } from '../firebase'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const handleGoogle = async () => {
+  // Handle redirect result when coming back from Google
+  useEffect(() => {
+    setLoading(true)
+    getRedirectResult(auth)
+      .then((result) => {
+        // If result exists, Firebase Auth handles the state change automatically
+        if (!result) setLoading(false)
+      })
+      .catch((e) => {
+        setError('Connexion échouée. Réessaie.')
+        setLoading(false)
+      })
+  }, [])
+
+  const handleGoogle = () => {
     setLoading(true)
     setError(null)
-    try {
-      await signInWithPopup(auth, googleProvider)
-    } catch (e) {
-      setError('Connexion annulée ou impossible. Réessaie.')
-      setLoading(false)
-    }
+    signInWithRedirect(auth, googleProvider)
   }
 
   return (
