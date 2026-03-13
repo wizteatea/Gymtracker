@@ -1,28 +1,26 @@
-import { useState, useEffect } from 'react'
-import { signInWithRedirect, getRedirectResult } from 'firebase/auth'
+import { useState } from 'react'
+import { signInWithPopup, signInWithRedirect } from 'firebase/auth'
 import { auth, googleProvider } from '../firebase'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // Handle redirect result when coming back from Google
-  useEffect(() => {
-    setLoading(true)
-    getRedirectResult(auth)
-      .then((result) => {
-        if (!result) setLoading(false)
-      })
-      .catch((e) => {
-        setError(`Erreur: ${e.code} — ${e.message}`)
-        setLoading(false)
-      })
-  }, [])
-
-  const handleGoogle = () => {
+  const handleGoogle = async () => {
     setLoading(true)
     setError(null)
-    signInWithRedirect(auth, googleProvider)
+    try {
+      // Try popup first (best UX)
+      await signInWithPopup(auth, googleProvider)
+    } catch (e) {
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+        // Fallback to redirect for mobile/popup blocked
+        signInWithRedirect(auth, googleProvider)
+      } else {
+        setError(`Erreur: ${e.code}`)
+        setLoading(false)
+      }
+    }
   }
 
   return (

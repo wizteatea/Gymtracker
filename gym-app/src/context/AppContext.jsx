@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signOut, getRedirectResult } from 'firebase/auth'
 import { auth } from '../firebase'
 import { syncFromFirestore, getProfileFromFirestore, createProfile } from '../data/store'
 
@@ -11,6 +11,11 @@ export function AppProvider({ children }) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [syncing, setSyncing] = useState(false)
   const [needsProfile, setNeedsProfile] = useState(false)
+
+  // Handle redirect result on page load (fallback for popup-blocked)
+  useEffect(() => {
+    getRedirectResult(auth).catch(() => {})
+  }, [])
 
   // Listen to Firebase Auth state
   useEffect(() => {
