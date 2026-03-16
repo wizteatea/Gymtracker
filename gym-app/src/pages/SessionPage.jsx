@@ -388,12 +388,12 @@ export default function SessionPage() {
     const durationSec = Math.floor((Date.now() - sessionStart) / 1000)
     addSessionToHistory(profileId, {
       workoutId, workoutTitle: w.title,
-      exercises: w.exercises.map((ex, i) => ({ ...ex, setsCompleted: currentSets[i] })),
+      exercises: w.exercises.map((ex, i) => ({ ...ex, ...sessionOverrides[i], setsCompleted: currentSets[i] })),
       duration: formatDuration(durationSec), durationSeconds: durationSec,
     })
     clearSession(); cancelSwNotification(); releaseWakeLock(wakeLockRef)
     refresh(); setFinished(true)
-  }, [profileId, workoutId, sessionStart, refresh])
+  }, [profileId, workoutId, sessionStart, refresh, sessionOverrides])
 
   const abandonSession = useCallback(() => {
     if (confirm('Abandonner la séance ? Ta progression sera perdue.')) {
