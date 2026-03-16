@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, TrendingUp, Calendar, Clock, ChevronDown, ChevronUp, Dumbbell, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { getHistory, saveHistory } from '../data/store'
+import { getHistory, deleteHistoryEntry } from '../data/store'
 import { format, parseISO } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
@@ -65,7 +65,7 @@ export default function HistoryPage() {
   const handleDelete = (e, id) => {
     e.stopPropagation()
     if (confirm('Supprimer cette séance de l\'historique ?')) {
-      saveHistory(profileId, history.filter(h => h.id !== id))
+      deleteHistoryEntry(profileId, id)
       refresh()
     }
   }
