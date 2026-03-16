@@ -89,12 +89,26 @@ export default function SessionPage() {
   const [showChangePicker, setShowChangePicker] = useState(false)
 
   const restInterval = useRef(null)
+  const restEndRef = useRef(null)   // absolute timestamp when rest ends
   const notifTimer = useRef(null)
   const initialized = useRef(false)
   const finishing = useRef(false)
 
   // Request notification permission on mount
   useEffect(() => { requestNotifPermission() }, [])
+
+  // Start rest helper — uses absolute time so it works when page is in background
+  const startRest = useCallback((seconds, nextExName) => {
+    clearInterval(restInterval.current)
+    cancelNotification(notifTimer.current)
+    const endTime = Date.now() + seconds * 1000
+    restEndRef.current = endTime
+    localStorage.setItem(REST_END_KEY, endTime.toString())
+    notifTimer.current = scheduleNotification(seconds, nextExName || 'prochain exercice')
+    setRestTotal(seconds)
+    setRestTime(seconds)
+    setShowRest(true)   // ce changement déclenche le useEffect du timer
+  }, []) // eslint-disable-line
 
   // Load workout
   useEffect(() => {
@@ -114,10 +128,12 @@ export default function SessionPage() {
         // Restore rest timer if still active
         const restEnd = localStorage.getItem(REST_END_KEY)
         if (restEnd) {
-          const remaining = Math.round((parseInt(restEnd) - Date.now()) / 1000)
+          const endTime = parseInt(restEnd)
+          const remaining = Math.round((endTime - Date.now()) / 1000)
           if (remaining > 0) {
-            setRestTime(remaining)
+            restEndRef.current = endTime
             setRestTotal(remaining)
+            setRestTime(remaining)
             setShowRest(true)
           } else {
             localStorage.removeItem(REST_END_KEY)
@@ -152,23 +168,43 @@ export default function SessionPage() {
     return () => clearInterval(t)
   }, [sessionStart])
 
-  // Rest timer
+  // Rest timer — calcule le temps restant à partir de l'heure absolue
+  // Fonctionne même si la page était en arrière-plan
   useEffect(() => {
-    if (showRest && restTime > 0) {
-      restInterval.current = setInterval(() => {
-        setRestTime(prev => {
-          if (prev <= 1) {
-            clearInterval(restInterval.current)
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200])
-            localStorage.removeItem(REST_END_KEY)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-      return () => clearInterval(restInterval.current)
+    if (!showRest) return
+
+    const tick = () => {
+      if (!restEndRef.current) return
+      const remaining = Math.max(0, Math.round((restEndRef.current - Date.now()) / 1000))
+      setRestTime(remaining)
+      if (remaining <= 0) {
+        clearInterval(restInterval.current)
+        localStorage.removeItem(REST_END_KEY)
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+      }
     }
-  }, [showRest, restTime])
+
+    tick() // tick immédiat au cas où la page était en arrière-plan
+    restInterval.current = setInterval(tick, 1000)
+    return () => clearInterval(restInterval.current)
+  }, [showRest])
+
+  // Quand la page redevient visible, recalcule immédiatement le temps restant
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && restEndRef.current) {
+        const remaining = Math.max(0, Math.round((restEndRef.current - Date.now()) / 1000))
+        setRestTime(remaining)
+        if (remaining <= 0) {
+          setShowRest(false)
+          localStorage.removeItem(REST_END_KEY)
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   const currentEx = workout?.exercises?.[currentExIdx]
   const currentSets = setsData[currentExIdx] || []
@@ -196,23 +232,14 @@ export default function SessionPage() {
       return copy
     })
 
-    // Start rest timer (not for superset — rest only after last superset exercise)
+    // Start rest timer after EVERY set (not just when all are done)
+    // Exception: supersets — repos seulement après le dernier exercice du superset
     const ex = workout?.exercises?.[currentExIdx]
-    const isSuperset = ex?.superset
-    if (!isSuperset && ex?.type !== 'cardio' && ex?.rest) {
-      const setsAfter = setsData[currentExIdx]
-      const allDoneAfter = setsAfter.every((s, i) => i === setIdx || s.done)
-      if (allDoneAfter) {
-        // All sets of this exercise done — start rest
-        cancelNotification(notifTimer.current)
-        const nextEx = workout?.exercises?.[currentExIdx + 1]
-        notifTimer.current = scheduleNotification(ex.rest, nextEx?.name || 'prochain exercice')
-        setRestTime(ex.rest)
-        setRestTotal(ex.rest)
-        setShowRest(true)
-      }
+    if (!ex?.superset && ex?.type !== 'cardio' && ex?.rest) {
+      const nextEx = workout?.exercises?.[currentExIdx + 1]
+      startRest(ex.rest, nextEx?.name)
     }
-  }, [currentExIdx, setsData, workout])
+  }, [currentExIdx, workout, startRest])
 
   const addSet = () => {
     setSetsData(prev => {
