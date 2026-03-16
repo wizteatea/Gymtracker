@@ -76,6 +76,23 @@ function playBeep() {
   } catch (_) {}
 }
 
+// Bip court unique (alerte 15 secondes)
+function playWarningBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 660
+    osc.type = 'sine'
+    gain.gain.setValueAtTime(0.4, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.2)
+  } catch (_) {}
+}
+
 // ─── Wake Lock : garde l'écran allumé pendant le repos ───
 async function acquireWakeLock(ref) {
   if (!('wakeLock' in navigator)) return
@@ -314,8 +331,11 @@ export default function SessionPage() {
       if (!restEndRef.current) return
       const remaining = Math.max(0, Math.round((restEndRef.current - Date.now()) / 1000))
       setRestTime(remaining)
-      // Titre de page = mini widget visible dans l'app switcher
       document.title = remaining > 0 ? `⏱ ${formatTime(remaining)} — GymTracker` : '✅ Repos terminé !'
+      if (remaining === 15) {
+        playWarningBeep()
+        if (navigator.vibrate) navigator.vibrate(100)
+      }
       if (remaining <= 0) {
         clearInterval(restInterval.current)
         localStorage.removeItem(REST_END_KEY)
