@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, GripVertical, Trash2, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, Link, Clock } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { getWorkouts, createWorkout, updateWorkout } from '../data/store'
 import ExercisePicker from '../components/ExercisePicker'
@@ -15,7 +15,6 @@ export default function WorkoutEdit() {
   const [exercises, setExercises] = useState([])
   const [notes, setNotes] = useState('')
   const [showPicker, setShowPicker] = useState(false)
-  const [dragIdx, setDragIdx] = useState(null)
 
   useEffect(() => {
     if (!isNew) {
@@ -41,6 +40,8 @@ export default function WorkoutEdit() {
       duration: ex.type === 'cardio' ? 20 : 0,
       distance: 0,
       calories: 0,
+      timeMode: false,   // true = durée en secondes au lieu de reps
+      superset: false,   // true = chaîné avec l'exercice suivant
     }])
     setShowPicker(false)
   }
@@ -97,7 +98,6 @@ export default function WorkoutEdit() {
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder="Ex: Push day, Leg day..."
-          autoFocus
         />
       </div>
 
@@ -116,62 +116,115 @@ export default function WorkoutEdit() {
       )}
 
       {exercises.map((ex, idx) => (
-        <div key={idx} className="card" style={{ position: 'relative' }}>
-          <div className="flex items-center gap-8 mb-8">
-            {/* Drag / reorder buttons */}
-            <div className="flex flex-col" style={{ gap: 2 }}>
-              <button onClick={() => moveExercise(idx, idx - 1)}
-                style={{ background: 'none', color: 'var(--text-muted)', padding: 2, fontSize: 12 }}
-                disabled={idx === 0}>▲</button>
-              <button onClick={() => moveExercise(idx, idx + 1)}
-                style={{ background: 'none', color: 'var(--text-muted)', padding: 2, fontSize: 12 }}
-                disabled={idx === exercises.length - 1}>▼</button>
+        <div key={idx}>
+          <div className="card" style={{ position: 'relative' }}>
+            {/* Header */}
+            <div className="flex items-center gap-8 mb-12">
+              <div className="flex flex-col" style={{ gap: 2 }}>
+                <button onClick={() => moveExercise(idx, idx - 1)}
+                  style={{ background: 'none', color: 'var(--text-muted)', padding: 2, fontSize: 12 }}
+                  disabled={idx === 0}>▲</button>
+                <button onClick={() => moveExercise(idx, idx + 1)}
+                  style={{ background: 'none', color: 'var(--text-muted)', padding: 2, fontSize: 12 }}
+                  disabled={idx === exercises.length - 1}>▼</button>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div className="font-bold text-sm">{ex.name}</div>
+                <div className="text-xs text-muted">{ex.muscle}</div>
+              </div>
+              <button onClick={() => removeExercise(idx)}
+                style={{ background: 'none', color: 'var(--danger)', padding: 4 }}>
+                <Trash2 size={16} />
+              </button>
             </div>
-            <div style={{ flex: 1 }}>
-              <div className="font-bold text-sm">{ex.name}</div>
-              <div className="text-xs text-muted">{ex.muscle}</div>
-            </div>
-            <button onClick={() => removeExercise(idx)}
-              style={{ background: 'none', color: 'var(--danger)', padding: 4 }}>
-              <Trash2 size={16} />
-            </button>
+
+            {ex.type === 'cardio' ? (
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Durée (min)</label>
+                  <input type="number" value={ex.duration}
+                    onChange={e => updateExercise(idx, 'duration', Number(e.target.value))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Distance (km)</label>
+                  <input type="number" value={ex.distance} step="0.1"
+                    onChange={e => updateExercise(idx, 'distance', Number(e.target.value))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Calories</label>
+                  <input type="number" value={ex.calories}
+                    onChange={e => updateExercise(idx, 'calories', Number(e.target.value))} />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Séries</label>
+                    <input type="number" value={ex.sets} min="1"
+                      onChange={e => updateExercise(idx, 'sets', Number(e.target.value))} />
+                  </div>
+
+                  {/* Reps OR Temps */}
+                  <div className="form-group">
+                    <div className="flex items-center gap-6 mb-4">
+                      <label className="form-label" style={{ margin: 0 }}>
+                        {ex.timeMode ? 'Durée (s)' : 'Reps'}
+                      </label>
+                      <button
+                        onClick={() => updateExercise(idx, 'timeMode', !ex.timeMode)}
+                        style={{
+                          background: ex.timeMode ? 'var(--accent)' : 'var(--bg-input)',
+                          color: ex.timeMode ? 'white' : 'var(--text-muted)',
+                          borderRadius: 6, padding: '2px 8px', fontSize: 11,
+                          display: 'flex', alignItems: 'center', gap: 4
+                        }}
+                        title={ex.timeMode ? 'Passer en reps' : 'Passer en durée'}
+                      >
+                        <Clock size={12} /> {ex.timeMode ? 'Temps' : 'Reps'}
+                      </button>
+                    </div>
+                    <input type="number"
+                      value={ex.timeMode ? (ex.duration || 30) : ex.reps}
+                      min="1"
+                      onChange={e => updateExercise(idx, ex.timeMode ? 'duration' : 'reps', Number(e.target.value))} />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Repos (s)</label>
+                    <input type="number" value={ex.rest} step="5"
+                      onChange={e => updateExercise(idx, 'rest', Number(e.target.value))} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Superset toggle (not for last exercise) */}
+            {idx < exercises.length - 1 && ex.type !== 'cardio' && (
+              <button
+                onClick={() => updateExercise(idx, 'superset', !ex.superset)}
+                style={{
+                  marginTop: 8,
+                  background: ex.superset ? 'var(--accent-light)' : 'var(--bg-input)',
+                  color: ex.superset ? 'var(--accent)' : 'var(--text-muted)',
+                  borderRadius: 8, padding: '6px 12px', fontSize: 12,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  border: ex.superset ? '1px solid var(--accent)' : '1px solid transparent'
+                }}
+              >
+                <Link size={13} />
+                {ex.superset ? 'Superset activé ↓' : 'Lier avec l\'exercice suivant (superset)'}
+              </button>
+            )}
           </div>
 
-          {ex.type === 'cardio' ? (
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Durée (min)</label>
-                <input type="number" value={ex.duration}
-                  onChange={e => updateExercise(idx, 'duration', Number(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Distance (km)</label>
-                <input type="number" value={ex.distance} step="0.1"
-                  onChange={e => updateExercise(idx, 'distance', Number(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Calories</label>
-                <input type="number" value={ex.calories}
-                  onChange={e => updateExercise(idx, 'calories', Number(e.target.value))} />
-              </div>
-            </div>
-          ) : (
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Séries</label>
-                <input type="number" value={ex.sets} min="1"
-                  onChange={e => updateExercise(idx, 'sets', Number(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Reps</label>
-                <input type="number" value={ex.reps} min="1"
-                  onChange={e => updateExercise(idx, 'reps', Number(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Repos (s)</label>
-                <input type="number" value={ex.rest} step="5"
-                  onChange={e => updateExercise(idx, 'rest', Number(e.target.value))} />
-              </div>
+          {/* Superset connector */}
+          {ex.superset && idx < exercises.length - 1 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              height: 24, color: 'var(--accent)', fontSize: 12, fontWeight: 700
+            }}>
+              ⟵ SUPERSET ⟶
             </div>
           )}
         </div>

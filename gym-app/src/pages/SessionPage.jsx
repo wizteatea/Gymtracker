@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Check, Plus, SkipForward, Timer } from 'lucide-react'
+import { ArrowLeft, Check, Plus, Timer, RefreshCw, Minus, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { getWorkouts, addSessionToHistory } from '../data/store'
+import ExercisePicker from '../components/ExercisePicker'
 
 const SESSION_KEY = 'gym_active_session'
+const REST_END_KEY = 'gym_rest_end'
 
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60)
@@ -17,6 +19,11 @@ function formatDuration(seconds) {
   const m = Math.floor((seconds % 3600) / 60)
   if (h > 0) return `${h}h${m.toString().padStart(2, '0')}`
   return `${m} min`
+}
+
+function parseWeight(val) {
+  if (typeof val === 'number') return val
+  return parseFloat(String(val).replace(',', '.')) || 0
 }
 
 function loadSession() {
@@ -32,6 +39,32 @@ function saveSession(data) {
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(REST_END_KEY)
+}
+
+// Request notification permission
+async function requestNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission()
+  }
+}
+
+function scheduleNotification(secondsLeft, exerciseName) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return null
+  const endTime = Date.now() + secondsLeft * 1000
+  localStorage.setItem(REST_END_KEY, endTime.toString())
+  const t = setTimeout(() => {
+    new Notification('GymTracker — Repos terminé !', {
+      body: `Exercice suivant : ${exerciseName}`,
+      icon: '/icon.svg',
+    })
+  }, secondsLeft * 1000)
+  return t
+}
+
+function cancelNotification(t) {
+  if (t) clearTimeout(t)
+  localStorage.removeItem(REST_END_KEY)
 }
 
 export default function SessionPage() {
@@ -40,7 +73,6 @@ export default function SessionPage() {
   const location = useLocation()
   const workoutIdFromNav = location.state?.workoutId
 
-  // Try to restore a saved session, or start a new one
   const saved = loadSession()
   const isResume = !workoutIdFromNav && saved && saved.profileId === profileId
   const workoutId = workoutIdFromNav || saved?.workoutId
@@ -54,8 +86,15 @@ export default function SessionPage() {
   const [sessionStart] = useState(() => saved?.sessionStart || Date.now())
   const [elapsed, setElapsed] = useState(0)
   const [finished, setFinished] = useState(false)
+  const [showChangePicker, setShowChangePicker] = useState(false)
+
   const restInterval = useRef(null)
+  const notifTimer = useRef(null)
   const initialized = useRef(false)
+  const finishing = useRef(false)
+
+  // Request notification permission on mount
+  useEffect(() => { requestNotifPermission() }, [])
 
   // Load workout
   useEffect(() => {
@@ -66,37 +105,44 @@ export default function SessionPage() {
     if (!w) { navigate('/', { replace: true }); return }
     setWorkout(w)
 
-    // Only init setsData if fresh start (not resumed)
     if (!initialized.current) {
       initialized.current = true
       if (isResume && saved?.setsData) {
         setSetsData(saved.setsData)
         setCurrentExIdx(saved.currentExIdx || 0)
+
+        // Restore rest timer if still active
+        const restEnd = localStorage.getItem(REST_END_KEY)
+        if (restEnd) {
+          const remaining = Math.round((parseInt(restEnd) - Date.now()) / 1000)
+          if (remaining > 0) {
+            setRestTime(remaining)
+            setRestTotal(remaining)
+            setShowRest(true)
+          } else {
+            localStorage.removeItem(REST_END_KEY)
+          }
+        }
       } else {
         setSetsData(w.exercises.map(ex => {
           if (ex.type === 'cardio') {
             return [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
           }
           return Array.from({ length: ex.sets }, () => ({
-            weight: 0,
-            reps: ex.reps,
+            weight: '',
+            reps: ex.timeMode ? 0 : ex.reps,
+            duration: ex.timeMode ? (ex.duration || 30) : 0,
             done: false,
           }))
         }))
       }
     }
-  }, [workoutId, profileId, navigate, isResume, saved])
+  }, [workoutId, profileId, navigate, isResume, saved, finished])
 
-  // Persist session to localStorage on every change
+  // Persist session
   useEffect(() => {
     if (workout && setsData.length > 0 && !finished) {
-      saveSession({
-        profileId,
-        workoutId,
-        currentExIdx,
-        setsData,
-        sessionStart,
-      })
+      saveSession({ profileId, workoutId, currentExIdx, setsData, sessionStart })
     }
   }, [profileId, workoutId, currentExIdx, setsData, sessionStart, workout, finished])
 
@@ -114,6 +160,7 @@ export default function SessionPage() {
           if (prev <= 1) {
             clearInterval(restInterval.current)
             if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+            localStorage.removeItem(REST_END_KEY)
             return 0
           }
           return prev - 1
@@ -126,28 +173,66 @@ export default function SessionPage() {
   const currentEx = workout?.exercises?.[currentExIdx]
   const currentSets = setsData[currentExIdx] || []
 
-  const updateSet = (setIdx, field, value) => {
+  const updateSet = useCallback((setIdx, field, value) => {
     setSetsData(prev => {
-      const copy = prev.map(arr => [...arr.map(s => ({ ...s }))])
+      const copy = prev.map(arr => arr.map(s => ({ ...s })))
       copy[currentExIdx][setIdx][field] = value
+      return copy
+    })
+  }, [currentExIdx])
+
+  const validateSet = useCallback((setIdx) => {
+    setSetsData(prev => {
+      const copy = prev.map(arr => arr.map(s => ({ ...s })))
+      const currentWeight = copy[currentExIdx][setIdx].weight
+      copy[currentExIdx][setIdx].done = true
+
+      // Auto-copy weight to next undone sets
+      for (let i = setIdx + 1; i < copy[currentExIdx].length; i++) {
+        if (!copy[currentExIdx][i].done) {
+          copy[currentExIdx][i].weight = currentWeight
+        }
+      }
+      return copy
+    })
+
+    // Start rest timer (not for superset — rest only after last superset exercise)
+    const ex = workout?.exercises?.[currentExIdx]
+    const isSuperset = ex?.superset
+    if (!isSuperset && ex?.type !== 'cardio' && ex?.rest) {
+      const setsAfter = setsData[currentExIdx]
+      const allDoneAfter = setsAfter.every((s, i) => i === setIdx || s.done)
+      if (allDoneAfter) {
+        // All sets of this exercise done — start rest
+        cancelNotification(notifTimer.current)
+        const nextEx = workout?.exercises?.[currentExIdx + 1]
+        notifTimer.current = scheduleNotification(ex.rest, nextEx?.name || 'prochain exercice')
+        setRestTime(ex.rest)
+        setRestTotal(ex.rest)
+        setShowRest(true)
+      }
+    }
+  }, [currentExIdx, setsData, workout])
+
+  const addSet = () => {
+    setSetsData(prev => {
+      const copy = prev.map(arr => arr.map(s => ({ ...s })))
+      const last = copy[currentExIdx][copy[currentExIdx].length - 1]
+      copy[currentExIdx].push({
+        weight: last?.weight || '',
+        reps: currentEx?.timeMode ? 0 : (currentEx?.reps || 10),
+        duration: currentEx?.timeMode ? (currentEx?.duration || 30) : 0,
+        done: false
+      })
       return copy
     })
   }
 
-  const validateSet = (setIdx) => {
-    updateSet(setIdx, 'done', true)
-    if (currentEx?.type !== 'cardio' && currentEx?.rest) {
-      setRestTime(currentEx.rest)
-      setRestTotal(currentEx.rest)
-      setShowRest(true)
-    }
-  }
-
-  const addSet = () => {
+  const removeSet = (setIdx) => {
     setSetsData(prev => {
-      const copy = prev.map(arr => [...arr.map(s => ({ ...s }))])
-      const lastSet = copy[currentExIdx][copy[currentExIdx].length - 1]
-      copy[currentExIdx].push({ weight: lastSet?.weight || 0, reps: currentEx?.reps || 10, done: false })
+      const copy = prev.map(arr => arr.map(s => ({ ...s })))
+      if (copy[currentExIdx].length <= 1) return prev
+      copy[currentExIdx].splice(setIdx, 1)
       return copy
     })
   }
@@ -160,7 +245,50 @@ export default function SessionPage() {
     if (currentExIdx > 0) setCurrentExIdx(currentExIdx - 1)
   }
 
-  const finishSession = () => {
+  const changeExercise = (newEx) => {
+    const updated = { ...workout }
+    updated.exercises = [...workout.exercises]
+    updated.exercises[currentExIdx] = {
+      ...updated.exercises[currentExIdx],
+      exerciseId: newEx.id,
+      name: newEx.name,
+      muscle: newEx.muscle,
+      type: newEx.type,
+    }
+    setWorkout(updated)
+
+    // Reset sets for this exercise
+    setSetsData(prev => {
+      const copy = prev.map(arr => arr.map(s => ({ ...s })))
+      const ex = updated.exercises[currentExIdx]
+      if (ex.type === 'cardio') {
+        copy[currentExIdx] = [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
+      } else {
+        copy[currentExIdx] = Array.from({ length: ex.sets || 3 }, () => ({
+          weight: '', reps: ex.reps || 10, duration: ex.duration || 30, done: false
+        }))
+      }
+      return copy
+    })
+    setShowChangePicker(false)
+  }
+
+  const stopRest = () => {
+    setShowRest(false)
+    clearInterval(restInterval.current)
+    cancelNotification(notifTimer.current)
+  }
+
+  const finishSession = useCallback(() => {
+    if (finishing.current) return
+    finishing.current = true
+
+    const allDone = setsData.every(sets => sets.every(s => s.done))
+    if (!allDone) {
+      const ok = window.confirm('Tous les exercices ne sont pas terminés. Arrêter la séance quand même ?')
+      if (!ok) { finishing.current = false; return }
+    }
+
     const durationSec = Math.floor((Date.now() - sessionStart) / 1000)
     addSessionToHistory(profileId, {
       workoutId,
@@ -173,13 +301,15 @@ export default function SessionPage() {
       durationSeconds: durationSec,
     })
     clearSession()
+    cancelNotification(notifTimer.current)
     refresh()
     setFinished(true)
-  }
+  }, [finishing, setsData, sessionStart, profileId, workoutId, workout, refresh])
 
   const abandonSession = () => {
     if (confirm('Abandonner la séance ? Ta progression sera perdue.')) {
       clearSession()
+      cancelNotification(notifTimer.current)
       navigate('/')
     }
   }
@@ -221,6 +351,9 @@ export default function SessionPage() {
   const totalSetsCompleted = setsData.reduce((sum, sets) => sum + sets.filter(s => s.done).length, 0)
   const totalSets = setsData.reduce((sum, sets) => sum + sets.length, 0)
 
+  // Superset: is this exercise chained with next?
+  const isSuperset = currentEx?.superset
+
   return (
     <div className="page" style={{ paddingBottom: 16 }}>
       {/* Header */}
@@ -235,7 +368,7 @@ export default function SessionPage() {
           </div>
         </div>
         <button className="btn btn-success btn-small" onClick={finishSession}>
-          <Check size={16} /> Terminer
+          Fin de séance
         </button>
       </div>
 
@@ -249,18 +382,34 @@ export default function SessionPage() {
       </div>
 
       {/* Exercise navigation */}
-      <div className="flex items-center justify-between mb-16">
+      <div className="flex items-center justify-between mb-8">
         <button onClick={prevExercise} disabled={currentExIdx === 0}
           style={{ background: 'none', color: currentExIdx === 0 ? 'var(--text-muted)' : 'var(--text)', padding: 8 }}>
           ◀
         </button>
-        <div className="text-center">
+        <div className="text-center" style={{ flex: 1 }}>
           <div className="text-xs text-muted">Exercice {currentExIdx + 1}/{workout.exercises.length}</div>
           <div className="font-bold" style={{ fontSize: 20 }}>{currentEx?.name}</div>
+          {isSuperset && (
+            <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginTop: 2 }}>
+              🔗 SUPERSET → {workout.exercises[currentExIdx + 1]?.name}
+            </div>
+          )}
         </div>
         <button onClick={nextExercise} disabled={isLastEx}
           style={{ background: 'none', color: isLastEx ? 'var(--text-muted)' : 'var(--text)', padding: 8 }}>
           ▶
+        </button>
+      </div>
+
+      {/* Change exercise button */}
+      <div style={{ textAlign: 'center', marginBottom: 12 }}>
+        <button
+          onClick={() => setShowChangePicker(true)}
+          style={{ background: 'none', color: 'var(--text-muted)', fontSize: 12, textDecoration: 'underline' }}
+        >
+          <RefreshCw size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+          Changer cet exercice
         </button>
       </div>
 
@@ -297,40 +446,64 @@ export default function SessionPage() {
           <div className="flex items-center text-xs text-muted" style={{ padding: '0 4px', marginBottom: 8 }}>
             <div style={{ width: 36, textAlign: 'center' }}>Série</div>
             <div style={{ flex: 1, textAlign: 'center' }}>Poids (kg)</div>
-            <div style={{ flex: 1, textAlign: 'center' }}>Reps</div>
-            <div style={{ width: 52 }}></div>
+            <div style={{ flex: 1, textAlign: 'center' }}>{currentEx?.timeMode ? 'Durée (s)' : 'Reps'}</div>
+            <div style={{ width: 44 }}></div>
+            <div style={{ width: 32 }}></div>
           </div>
 
           {currentSets.map((set, setIdx) => (
-            <div key={setIdx} className="flex items-center gap-8 mb-8"
+            <div key={setIdx} className="flex items-center gap-6 mb-8"
               style={{
                 background: set.done ? 'var(--success-light)' : 'var(--bg-card)',
-                borderRadius: 'var(--radius-sm)', padding: '10px 8px'
+                borderRadius: 'var(--radius-sm)', padding: '10px 6px'
               }}>
               <div style={{ width: 36, textAlign: 'center', fontWeight: 700, fontSize: 14, color: 'var(--text-muted)' }}>
                 {setIdx + 1}
               </div>
+
+              {/* Weight — text input to allow comma (7,5) */}
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={set.weight}
-                onChange={e => updateSet(setIdx, 'weight', Number(e.target.value))}
+                onChange={e => updateSet(setIdx, 'weight', e.target.value)}
                 style={{
-                  flex: 1, textAlign: 'center', padding: '10px 8px',
+                  flex: 1, textAlign: 'center', padding: '10px 4px',
                   fontSize: 18, fontWeight: 700,
-                  background: set.done ? 'transparent' : 'var(--bg-input)'
+                  background: set.done ? 'transparent' : 'var(--bg-input)',
+                  borderRadius: 8
                 }}
-                step="0.5"
+                placeholder="0"
               />
-              <input
-                type="number"
-                value={set.reps}
-                onChange={e => updateSet(setIdx, 'reps', Number(e.target.value))}
-                style={{
-                  flex: 1, textAlign: 'center', padding: '10px 8px',
-                  fontSize: 18, fontWeight: 700,
-                  background: set.done ? 'transparent' : 'var(--bg-input)'
-                }}
-              />
+
+              {/* Reps or Duration */}
+              {currentEx?.timeMode ? (
+                <input
+                  type="number"
+                  value={set.duration}
+                  onChange={e => updateSet(setIdx, 'duration', Number(e.target.value))}
+                  style={{
+                    flex: 1, textAlign: 'center', padding: '10px 4px',
+                    fontSize: 18, fontWeight: 700,
+                    background: set.done ? 'transparent' : 'var(--bg-input)',
+                    borderRadius: 8
+                  }}
+                />
+              ) : (
+                <input
+                  type="number"
+                  value={set.reps}
+                  onChange={e => updateSet(setIdx, 'reps', Number(e.target.value))}
+                  style={{
+                    flex: 1, textAlign: 'center', padding: '10px 4px',
+                    fontSize: 18, fontWeight: 700,
+                    background: set.done ? 'transparent' : 'var(--bg-input)',
+                    borderRadius: 8
+                  }}
+                />
+              )}
+
+              {/* Validate */}
               <button
                 onClick={() => set.done ? updateSet(setIdx, 'done', false) : validateSet(setIdx)}
                 style={{
@@ -343,6 +516,20 @@ export default function SessionPage() {
               >
                 <Check size={20} />
               </button>
+
+              {/* Remove set */}
+              <button
+                onClick={() => removeSet(setIdx)}
+                style={{
+                  width: 28, height: 44, borderRadius: 8,
+                  background: 'none', color: 'var(--danger)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, opacity: currentSets.length <= 1 ? 0.2 : 1
+                }}
+                disabled={currentSets.length <= 1}
+              >
+                <Minus size={16} />
+              </button>
             </div>
           ))}
 
@@ -352,15 +539,15 @@ export default function SessionPage() {
         </>
       )}
 
-      {/* Next exercise button */}
+      {/* Next exercise / superset button */}
       {allExDone && !isLastEx && (
         <button className="btn btn-primary mt-16" onClick={nextExercise}>
-          <SkipForward size={18} /> Exercice suivant
+          {isSuperset ? `🔗 Superset → ${workout.exercises[currentExIdx + 1]?.name}` : 'Exercice suivant ▶'}
         </button>
       )}
       {allExDone && isLastEx && (
         <button className="btn btn-success mt-16" onClick={finishSession}>
-          <Check size={18} /> Terminer la séance
+          <Check size={18} /> Fin de séance
         </button>
       )}
 
@@ -383,17 +570,27 @@ export default function SessionPage() {
             </svg>
           </div>
           <div className="flex gap-12">
-            <button className="btn btn-secondary btn-small" onClick={() => setRestTime(r => Math.max(0, r - 15))}>
-              -15s
-            </button>
-            <button className="btn btn-primary btn-small" onClick={() => { setShowRest(false); clearInterval(restInterval.current) }}>
+            <button className="btn btn-secondary btn-small" onClick={() => setRestTime(r => Math.max(0, r - 15))}>-15s</button>
+            <button className="btn btn-primary btn-small" onClick={stopRest}>
               {restTime === 0 ? 'OK' : 'Passer'}
             </button>
-            <button className="btn btn-secondary btn-small" onClick={() => setRestTime(r => r + 15)}>
-              +15s
-            </button>
+            <button className="btn btn-secondary btn-small" onClick={() => setRestTime(r => r + 15)}>+15s</button>
           </div>
+          {restTime > 0 && (
+            <div className="text-xs text-muted mt-8" style={{ textAlign: 'center' }}>
+              Une notification vous alertera si vous quittez l'app
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Change exercise picker */}
+      {showChangePicker && (
+        <ExercisePicker
+          onSelect={changeExercise}
+          onClose={() => setShowChangePicker(false)}
+          selectedIds={[]}
+        />
       )}
     </div>
   )

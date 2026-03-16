@@ -48,7 +48,6 @@ export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) 
             onChange={e => setSearch(e.target.value)}
             placeholder="Rechercher un exercice..."
             style={{ paddingLeft: 40 }}
-            autoFocus
           />
         </div>
 
