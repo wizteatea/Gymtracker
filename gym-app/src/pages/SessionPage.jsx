@@ -76,6 +76,22 @@ function playBeep() {
   } catch (_) {}
 }
 
+// ─── Wake Lock : garde l'écran allumé pendant le repos ───
+async function acquireWakeLock(ref) {
+  if (!('wakeLock' in navigator)) return
+  try {
+    if (ref.current) { ref.current.release().catch(() => {}) }
+    ref.current = await navigator.wakeLock.request('screen')
+    ref.current.addEventListener('release', () => { ref.current = null })
+  } catch (_) {}
+}
+function releaseWakeLock(ref) {
+  if (ref.current) {
+    ref.current.release().catch(() => {})
+    ref.current = null
+  }
+}
+
 // ─── Timer d'élapsed séparé pour éviter de re-rendre toute la page chaque seconde ───
 const ElapsedTimer = memo(function ElapsedTimer({ sessionStart }) {
   const [elapsed, setElapsed] = useState(Math.floor((Date.now() - sessionStart) / 1000))
@@ -198,7 +214,8 @@ export default function SessionPage() {
   // Refs — pas de re-render quand ils changent
   const restInterval = useRef(null)
   const restEndRef = useRef(null)
-  const restNextExRef = useRef('')   // nom de l'exercice suivant pour reprogrammer la notif
+  const restNextExRef = useRef('')
+  const wakeLockRef = useRef(null)
 
   const initialized = useRef(false)
   const finishing = useRef(false)
@@ -229,6 +246,7 @@ export default function SessionPage() {
     restNextExRef.current = nextExName || ''
     localStorage.setItem(REST_END_KEY, endTime.toString())
     scheduleSwNotification(seconds, nextExName)
+    acquireWakeLock(wakeLockRef)   // garde l'écran allumé
     setRestTotal(seconds)
     setRestTime(seconds)
     setShowRest(true)
@@ -301,6 +319,7 @@ export default function SessionPage() {
       if (remaining <= 0) {
         clearInterval(restInterval.current)
         localStorage.removeItem(REST_END_KEY)
+        releaseWakeLock(wakeLockRef)
         playBeep()
         if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300])
       }
@@ -317,6 +336,7 @@ export default function SessionPage() {
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible' && restEndRef.current) {
+        acquireWakeLock(wakeLockRef)  // ré-acquiert après retour en premier plan
         const remaining = Math.max(0, Math.round((restEndRef.current - Date.now()) / 1000))
         setRestTime(remaining)
         if (remaining <= 0) {
@@ -397,6 +417,7 @@ export default function SessionPage() {
     setShowRest(false)
     clearInterval(restInterval.current)
     cancelSwNotification()
+    releaseWakeLock(wakeLockRef)   // libère le wake lock
     restEndRef.current = null
     localStorage.removeItem(REST_END_KEY)
     document.title = 'GymTracker'
@@ -425,6 +446,7 @@ export default function SessionPage() {
     clearTimeout(saveDebounce.current)
     clearSession()
     cancelSwNotification()
+    releaseWakeLock(wakeLockRef)
     refresh()
     setFinished(true)
   }, [profileId, workoutId, sessionStart, refresh])
@@ -435,6 +457,7 @@ export default function SessionPage() {
       clearTimeout(saveDebounce.current)
       clearSession()
       cancelSwNotification()
+      releaseWakeLock(wakeLockRef)
       navigate('/')
     }
   }, [navigate])
