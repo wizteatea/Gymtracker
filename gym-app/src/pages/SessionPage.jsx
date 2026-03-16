@@ -198,6 +198,7 @@ export default function SessionPage() {
   // Refs — pas de re-render quand ils changent
   const restInterval = useRef(null)
   const restEndRef = useRef(null)
+  const restNextExRef = useRef('')   // nom de l'exercice suivant pour reprogrammer la notif
 
   const initialized = useRef(false)
   const finishing = useRef(false)
@@ -225,6 +226,7 @@ export default function SessionPage() {
     cancelSwNotification()
     const endTime = Date.now() + seconds * 1000
     restEndRef.current = endTime
+    restNextExRef.current = nextExName || ''
     localStorage.setItem(REST_END_KEY, endTime.toString())
     scheduleSwNotification(seconds, nextExName)
     setRestTotal(seconds)
@@ -625,12 +627,28 @@ export default function SessionPage() {
           </div>
           <div className="flex gap-12">
             <button className="btn btn-secondary btn-small"
-              onClick={() => { const t = Math.max(0, restTime - 15); setRestTime(t); restEndRef.current = Date.now() + t * 1000 }}>-15s</button>
+              onClick={() => {
+                const t = Math.max(0, restTime - 15)
+                const endTime = Date.now() + t * 1000
+                restEndRef.current = endTime
+                localStorage.setItem(REST_END_KEY, endTime.toString())
+                cancelSwNotification()
+                if (t > 0) scheduleSwNotification(t, restNextExRef.current)
+                setRestTime(t)
+              }}>-15s</button>
             <button className="btn btn-primary btn-small" onClick={stopRest}>
               {restTime === 0 ? 'OK' : 'Passer'}
             </button>
             <button className="btn btn-secondary btn-small"
-              onClick={() => { const t = restTime + 15; setRestTime(t); restEndRef.current = Date.now() + t * 1000 }}>+15s</button>
+              onClick={() => {
+                const t = restTime + 15
+                const endTime = Date.now() + t * 1000
+                restEndRef.current = endTime
+                localStorage.setItem(REST_END_KEY, endTime.toString())
+                cancelSwNotification()
+                scheduleSwNotification(t, restNextExRef.current)
+                setRestTime(t)
+              }}>+15s</button>
           </div>
         </div>
       )}
