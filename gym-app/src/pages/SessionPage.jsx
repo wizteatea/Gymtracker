@@ -174,6 +174,8 @@ export default function SessionPage() {
   const [sessionStart] = useState(() => saved?.sessionStart || Date.now())
   const [finished, setFinished] = useState(false)
   const [showChangePicker, setShowChangePicker] = useState(false)
+  // Remplacement temporaire d'exercice (session uniquement, ne modifie pas le workout)
+  const [sessionOverrides, setSessionOverrides] = useState({})
 
   // Refs — pas de re-render quand ils changent
   const restInterval = useRef(null)
@@ -325,9 +327,9 @@ export default function SessionPage() {
     })
     const ex = w?.exercises?.[idx]
     if (!ex?.superset && ex?.type !== 'cardio' && ex?.rest) {
-      startRest(ex.rest, w?.exercises?.[idx + 1]?.name)
+      startRest(ex.rest, sessionOverrides[idx + 1]?.name || w?.exercises?.[idx + 1]?.name)
     }
-  }, [startRest])
+  }, [startRest, sessionOverrides])
 
   const addSet = useCallback(() => {
     const idx = currentExIdxRef.current
@@ -399,25 +401,26 @@ export default function SessionPage() {
 
   const changeExercise = useCallback((newEx) => {
     const idx = currentExIdxRef.current
-    setWorkout(prev => {
-      const updated = { ...prev, exercises: [...prev.exercises] }
-      updated.exercises[idx] = { ...updated.exercises[idx], exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle, type: newEx.type }
-      return updated
-    })
-    setSetsData(prev => prev.map((arr, i) => {
-      if (i !== idx) return arr
-      return Array.from({ length: 3 }, () => ({ weight: '', reps: 10, duration: 30, done: false }))
-    }))
+    // Enregistre le remplacement temporaire (ne touche pas au workout original)
+    setSessionOverrides(prev => ({ ...prev, [idx]: { exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle, type: newEx.type } }))
+    // Remet les séries à zéro pour cet exercice
+    setSetsData(prev => prev.map((arr, i) =>
+      i === idx ? Array.from({ length: arr.length }, () => ({ weight: '', reps: arr[0]?.reps || 10, duration: arr[0]?.duration || 30, done: false })) : arr
+    ))
     setShowChangePicker(false)
   }, [])
 
   if (!workout) return null
 
-  const currentEx = workout.exercises[currentExIdx]
+  // Fusionne l'exercice du workout avec l'override de session si présent
+  const currentEx = sessionOverrides[currentExIdx]
+    ? { ...workout.exercises[currentExIdx], ...sessionOverrides[currentExIdx] }
+    : workout.exercises[currentExIdx]
   const currentSets = setsData[currentExIdx] || []
   const allExDone = currentSets.every(s => s.done)
   const isLastEx = currentExIdx === workout.exercises.length - 1
   const isSuperset = currentEx?.superset
+  const nextExName = sessionOverrides[currentExIdx + 1]?.name || workout.exercises[currentExIdx + 1]?.name
   const totalSetsCompleted = setsData.reduce((sum, sets) => sum + sets.filter(s => s.done).length, 0)
   const totalSets = setsData.reduce((sum, sets) => sum + sets.length, 0)
 
@@ -485,7 +488,7 @@ export default function SessionPage() {
           <div className="font-bold" style={{ fontSize: 20 }}>{currentEx?.name}</div>
           {isSuperset && (
             <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginTop: 2 }}>
-              🔗 SUPERSET → {workout.exercises[currentExIdx + 1]?.name}
+              🔗 SUPERSET → {nextExName}
             </div>
           )}
         </div>
@@ -555,7 +558,7 @@ export default function SessionPage() {
 
       {allExDone && !isLastEx && (
         <button className="btn btn-primary mt-16" onClick={() => setCurrentExIdx(i => i + 1)}>
-          {isSuperset ? `🔗 Superset → ${workout.exercises[currentExIdx + 1]?.name}` : 'Exercice suivant ▶'}
+          {isSuperset ? `🔗 Superset → ${nextExName}` : 'Exercice suivant ▶'}
         </button>
       )}
       {allExDone && isLastEx && (
