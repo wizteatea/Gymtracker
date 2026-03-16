@@ -10,6 +10,7 @@ import CalendarPage from './pages/CalendarPage'
 import SessionPage from './pages/SessionPage'
 import HistoryPage from './pages/HistoryPage'
 import ProfilePage from './pages/ProfilePage'
+import ExerciseCreate from './pages/ExerciseCreate'
 
 function AppContent() {
   const { user, authLoading, needsProfile, syncing } = useApp()
@@ -59,6 +60,7 @@ function AppContent() {
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/session" element={<SessionPage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/exercises/new" element={<ExerciseCreate />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Routes>
 

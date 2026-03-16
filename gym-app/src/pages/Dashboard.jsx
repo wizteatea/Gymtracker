@@ -122,12 +122,12 @@ export default function Dashboard() {
         <button className="card" onClick={() => navigate('/workouts/new')}
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 20, cursor: 'pointer' }}>
           <Plus size={24} color="var(--accent)" />
-          <span className="text-sm font-bold">Créer</span>
+          <span className="text-sm font-bold">Créer une séance</span>
         </button>
-        <button className="card" onClick={() => navigate('/workouts')}
+        <button className="card" onClick={() => navigate('/exercises/new')}
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 20, cursor: 'pointer' }}>
           <Dumbbell size={24} color="var(--success)" />
-          <span className="text-sm font-bold">Mes séances</span>
+          <span className="text-sm font-bold">Créer un exercice</span>
         </button>
       </div>
 
