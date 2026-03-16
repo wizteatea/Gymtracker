@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Search, Plus, Check, X } from 'lucide-react'
 import { DEFAULT_EXERCISES, MUSCLE_GROUPS } from '../data/exercises'
-import { getCustomExercises, addCustomExercise } from '../data/store'
+import { getCustomExercises, addCustomExercise, getCustomMuscleGroups, addCustomMuscleGroup } from '../data/store'
 import { useApp } from '../context/AppContext'
 
 export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) {
@@ -10,8 +10,12 @@ export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) 
   const [filter, setFilter] = useState('all')
   const [showCreate, setShowCreate] = useState(false)
   const [newEx, setNewEx] = useState({ name: '', muscle: 'poitrine', type: 'musculation', description: '' })
+  const [showNewMuscle, setShowNewMuscle] = useState(false)
+  const [newMuscle, setNewMuscle] = useState({ label: '', emoji: '💪' })
+  const [customMuscles, setCustomMuscles] = useState(() => getCustomMuscleGroups(profileId))
 
   const customExercises = getCustomExercises(profileId)
+  const allMuscleGroups = useMemo(() => [...MUSCLE_GROUPS, ...customMuscles], [customMuscles])
   const allExercises = useMemo(() => [...DEFAULT_EXERCISES, ...customExercises], [customExercises])
 
   const filtered = useMemo(() => {
@@ -28,6 +32,16 @@ export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) 
     onSelect(created)
     setShowCreate(false)
     setNewEx({ name: '', muscle: 'poitrine', type: 'musculation', description: '' })
+  }
+
+  const handleCreateMuscle = () => {
+    if (!newMuscle.label.trim()) return
+    const id = newMuscle.label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    const created = addCustomMuscleGroup(profileId, { id, label: newMuscle.label.trim(), emoji: newMuscle.emoji || '💪' })
+    setCustomMuscles(prev => [...prev, created])
+    setNewEx(prev => ({ ...prev, muscle: created.id }))
+    setShowNewMuscle(false)
+    setNewMuscle({ label: '', emoji: '💪' })
   }
 
   return (
@@ -56,7 +70,7 @@ export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) 
           <button className={`chip ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>
             Tous
           </button>
-          {MUSCLE_GROUPS.map(g => (
+          {allMuscleGroups.map(g => (
             <button
               key={g.id}
               className={`chip ${filter === g.id ? 'active' : ''}`}
@@ -92,11 +106,11 @@ export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) 
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 16, flexShrink: 0
                 }}>
-                  {MUSCLE_GROUPS.find(g => g.id === ex.muscle)?.emoji || '💪'}
+                  {allMuscleGroups.find(g => g.id === ex.muscle)?.emoji || '💪'}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="font-bold text-sm truncate">{ex.name}</div>
-                  <div className="text-xs text-muted">{MUSCLE_GROUPS.find(g => g.id === ex.muscle)?.label} · {ex.type}</div>
+                  <div className="text-xs text-muted">{allMuscleGroups.find(g => g.id === ex.muscle)?.label} · {ex.type}</div>
                 </div>
                 {isSelected && <Check size={18} color="var(--accent)" />}
                 {ex.custom && <span className="badge" style={{ background: 'var(--warning)', color: '#000', fontSize: 10 }}>Custom</span>}
@@ -121,14 +135,51 @@ export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) 
               <input value={newEx.name} onChange={e => setNewEx({ ...newEx, name: e.target.value })} placeholder="Nom de l'exercice" autoFocus />
             </div>
             <div className="form-row">
-              <select value={newEx.muscle} onChange={e => setNewEx({ ...newEx, muscle: e.target.value })}>
-                {MUSCLE_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
-              </select>
+              <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                <select
+                  value={newEx.muscle}
+                  onChange={e => {
+                    if (e.target.value === '__new__') { setShowNewMuscle(true) }
+                    else { setNewEx({ ...newEx, muscle: e.target.value }) }
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  {allMuscleGroups.map(g => <option key={g.id} value={g.id}>{g.emoji} {g.label}</option>)}
+                  <option value="__new__">➕ Nouveau muscle...</option>
+                </select>
+              </div>
               <select value={newEx.type} onChange={e => setNewEx({ ...newEx, type: e.target.value })}>
                 <option value="musculation">Musculation</option>
                 <option value="cardio">Cardio</option>
               </select>
             </div>
+
+            {showNewMuscle && (
+              <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, marginTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--accent)' }}>Nouveau groupe musculaire</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    style={{ width: 52, textAlign: 'center', fontSize: 20, padding: '6px 4px' }}
+                    value={newMuscle.emoji}
+                    onChange={e => setNewMuscle(m => ({ ...m, emoji: e.target.value }))}
+                    placeholder="💪"
+                  />
+                  <input
+                    style={{ flex: 1 }}
+                    value={newMuscle.label}
+                    onChange={e => setNewMuscle(m => ({ ...m, label: e.target.value }))}
+                    placeholder="Nom du muscle"
+                    autoFocus
+                    onKeyDown={e => e.key === 'Enter' && handleCreateMuscle()}
+                  />
+                </div>
+                <div className="flex gap-8 mt-8">
+                  <button className="btn btn-primary btn-small" onClick={handleCreateMuscle}>Créer</button>
+                  <button className="btn btn-secondary btn-small" onClick={() => setShowNewMuscle(false)}>Annuler</button>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-8 mt-8">
               <button className="btn btn-primary btn-small" onClick={handleCreateExercise}>Ajouter</button>
               <button className="btn btn-secondary btn-small" onClick={() => setShowCreate(false)}>Annuler</button>

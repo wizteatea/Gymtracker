@@ -5,6 +5,7 @@ export const MUSCLE_GROUPS = [
   { id: 'biceps', label: 'Biceps', emoji: '💪' },
   { id: 'triceps', label: 'Triceps', emoji: '💪' },
   { id: 'jambes', label: 'Jambes', emoji: '🦵' },
+  { id: 'fessier', label: 'Fessier', emoji: '🍑' },
   { id: 'abdominaux', label: 'Abdominaux', emoji: '🎯' },
   { id: 'cardio', label: 'Cardio', emoji: '❤️' },
 ]
@@ -19,6 +20,9 @@ export const DEFAULT_EXERCISES = [
   { id: 'ex_6', name: 'Pec deck (butterfly)', muscle: 'poitrine', type: 'musculation', description: 'Machine d\'isolation pour la poitrine' },
   { id: 'ex_7', name: 'Poulie vis-à-vis', muscle: 'poitrine', type: 'musculation', description: 'Croisement de câbles pour la poitrine' },
   { id: 'ex_8', name: 'Dips (poitrine)', muscle: 'poitrine', type: 'musculation', description: 'Penché en avant pour cibler la poitrine' },
+  { id: 'ex_9a', name: 'Développé couché haltères', muscle: 'poitrine', type: 'musculation', description: 'Développé couché avec haltères, amplitude max' },
+  { id: 'ex_9b', name: 'Pompes diamant', muscle: 'poitrine', type: 'musculation', description: 'Pompes prise serrée, triceps et pectoraux internes' },
+  { id: 'ex_9c', name: 'Crossover câble', muscle: 'poitrine', type: 'musculation', description: 'Croisement de câbles en position debout' },
 
   // Dos
   { id: 'ex_10', name: 'Tractions', muscle: 'dos', type: 'musculation', description: 'Exercice roi pour le dos' },
@@ -30,6 +34,9 @@ export const DEFAULT_EXERCISES = [
   { id: 'ex_16', name: 'Pullover', muscle: 'dos', type: 'musculation', description: 'Haltère derrière la tête sur un banc' },
   { id: 'ex_17', name: 'Shrugs', muscle: 'dos', type: 'musculation', description: 'Élévation des épaules pour les trapèzes' },
   { id: 'ex_18', name: 'Rowing T-bar', muscle: 'dos', type: 'musculation', description: 'Rowing avec barre en T' },
+  { id: 'ex_19a', name: 'Tirage poitrine prise serrée', muscle: 'dos', type: 'musculation', description: 'Tirage vertical prise neutre étroite' },
+  { id: 'ex_19b', name: 'Rowing poulie haute', muscle: 'dos', type: 'musculation', description: 'Tirage poulie haute vers le menton' },
+  { id: 'ex_19c', name: 'Superman', muscle: 'dos', type: 'musculation', description: 'Extension dorsale au sol' },
 
   // Épaules
   { id: 'ex_20', name: 'Développé militaire', muscle: 'epaules', type: 'musculation', description: 'Presse au-dessus de la tête avec barre' },
@@ -60,16 +67,32 @@ export const DEFAULT_EXERCISES = [
   // Jambes
   { id: 'ex_50', name: 'Squat barre', muscle: 'jambes', type: 'musculation', description: 'Exercice fondamental pour les jambes' },
   { id: 'ex_51', name: 'Presse à cuisses', muscle: 'jambes', type: 'musculation', description: 'Machine pour quadriceps et fessiers' },
-  { id: 'ex_52', name: 'Fentes', muscle: 'jambes', type: 'musculation', description: 'Avec haltères ou barre' },
+  { id: 'ex_52', name: 'Fentes avant', muscle: 'jambes', type: 'musculation', description: 'Avec haltères ou barre' },
   { id: 'ex_53', name: 'Leg extension', muscle: 'jambes', type: 'musculation', description: 'Isolation des quadriceps' },
   { id: 'ex_54', name: 'Leg curl', muscle: 'jambes', type: 'musculation', description: 'Isolation des ischio-jambiers' },
   { id: 'ex_55', name: 'Mollets debout', muscle: 'jambes', type: 'musculation', description: 'Élévation des mollets debout' },
   { id: 'ex_56', name: 'Mollets assis', muscle: 'jambes', type: 'musculation', description: 'Élévation des mollets assis' },
-  { id: 'ex_57', name: 'Hip thrust', muscle: 'jambes', type: 'musculation', description: 'Extension de hanche pour les fessiers' },
-  { id: 'ex_58', name: 'Squat bulgare', muscle: 'jambes', type: 'musculation', description: 'Fente pied arrière surélevé' },
   { id: 'ex_59', name: 'Hack squat', muscle: 'jambes', type: 'musculation', description: 'Machine squat guidé' },
   { id: 'ex_60', name: 'Adducteurs', muscle: 'jambes', type: 'musculation', description: 'Machine pour l\'intérieur des cuisses' },
   { id: 'ex_61', name: 'Abducteurs', muscle: 'jambes', type: 'musculation', description: 'Machine pour l\'extérieur des cuisses' },
+  { id: 'ex_62', name: 'Leg press 45°', muscle: 'jambes', type: 'musculation', description: 'Presse inclinée à 45 degrés' },
+  { id: 'ex_63', name: 'Squat gobelet', muscle: 'jambes', type: 'musculation', description: 'Squat avec haltère tenu à deux mains' },
+  { id: 'ex_64', name: 'Romanian deadlift', muscle: 'jambes', type: 'musculation', description: 'Soulevé de terre jambes quasi tendues' },
+  { id: 'ex_65', name: 'Step-up', muscle: 'jambes', type: 'musculation', description: 'Montée sur banc avec haltères' },
+
+  // Fessier
+  { id: 'ex_57', name: 'Hip thrust', muscle: 'fessier', type: 'musculation', description: 'Extension de hanche avec barre' },
+  { id: 'ex_58', name: 'Squat bulgare', muscle: 'fessier', type: 'musculation', description: 'Fente pied arrière surélevé' },
+  { id: 'ex_90', name: 'Hip thrust haltère', muscle: 'fessier', type: 'musculation', description: 'Extension de hanche avec haltère' },
+  { id: 'ex_91', name: 'Glute bridge', muscle: 'fessier', type: 'musculation', description: 'Pont fessier au sol' },
+  { id: 'ex_92', name: 'Cable kickback', muscle: 'fessier', type: 'musculation', description: 'Extension de jambe à la poulie basse' },
+  { id: 'ex_93', name: 'Fentes latérales', muscle: 'fessier', type: 'musculation', description: 'Fente sur le côté pour fessiers et adducteurs' },
+  { id: 'ex_94', name: 'Abduction poulie', muscle: 'fessier', type: 'musculation', description: 'Abduction de hanche à la poulie basse' },
+  { id: 'ex_95', name: 'Good morning', muscle: 'fessier', type: 'musculation', description: 'Flexion buste en avant avec barre' },
+  { id: 'ex_96', name: 'Squat sumo', muscle: 'fessier', type: 'musculation', description: 'Squat prise large pour fessiers et adducteurs' },
+  { id: 'ex_97', name: 'Fessier machine', muscle: 'fessier', type: 'musculation', description: 'Machine d\'extension de hanche' },
+  { id: 'ex_98', name: 'Donkey kicks', muscle: 'fessier', type: 'musculation', description: 'Extension de jambe à quatre pattes' },
+  { id: 'ex_99', name: 'Clamshell', muscle: 'fessier', type: 'musculation', description: 'Abduction de hanche allongé sur le côté' },
 
   // Abdominaux
   { id: 'ex_70', name: 'Crunch', muscle: 'abdominaux', type: 'musculation', description: 'Exercice classique pour les abdos' },
