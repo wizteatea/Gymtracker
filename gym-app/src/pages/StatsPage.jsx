@@ -29,6 +29,7 @@ export default function StatsPage() {
 
     let weekVolume = 0
     let weekSessions = 0
+    let weekDurationSeconds = 0
     const muscleCount = {}
 
     history.forEach(session => {
@@ -42,17 +43,17 @@ export default function StatsPage() {
 
         const vol = doneSets.reduce((sum, s) => sum + (s.weight || 0) * (s.reps || 0), 0)
 
-        if (isThisWeek) {
-          weekVolume += vol
-        }
+        if (isThisWeek) weekVolume += vol
 
-        // muscle count (all time)
         if (ex.muscle && ex.type !== 'cardio') {
           muscleCount[ex.muscle] = (muscleCount[ex.muscle] || 0) + 1
         }
       })
 
-      if (isThisWeek) weekSessions++
+      if (isThisWeek) {
+        weekSessions++
+        weekDurationSeconds += session.durationSeconds || 0
+      }
     })
 
     // Top 5 muscles
@@ -66,7 +67,7 @@ export default function StatsPage() {
         count,
       }))
 
-    return { weekVolume, weekSessions, topMuscles }
+    return { weekVolume, weekSessions, weekDurationSeconds, topMuscles }
   }, [history, allMuscleGroups])
 
   // ── Monthly progression (last 6 months) ──
@@ -75,13 +76,14 @@ export default function StatsPage() {
     for (let i = 5; i >= 0; i--) {
       const d = subMonths(new Date(), i)
       const key = format(d, 'yyyy-MM')
-      months.push({ key, label: format(d, 'MMM', { locale: fr }), sessions: 0, volume: 0 })
+      months.push({ key, label: format(d, 'MMM', { locale: fr }), sessions: 0, volume: 0, duration: 0 })
     }
     history.forEach(session => {
       const key = format(parseISO(session.completedAt), 'yyyy-MM')
       const m = months.find(m => m.key === key)
       if (!m) return
       m.sessions++
+      m.duration += Math.round((session.durationSeconds || 0) / 60)
       session.exercises?.forEach(ex => {
         ex.setsCompleted?.filter(s => s.done).forEach(s => {
           m.volume += (s.weight || 0) * (s.reps || 0)
@@ -154,6 +156,12 @@ export default function StatsPage() {
   }, [exerciseStats, allMuscleGroups])
 
   const fmtVolume = (v) => v >= 1000 ? (v / 1000).toFixed(1) + ' t' : v + ' kg'
+  const fmtDuration = (secs) => {
+    const h = Math.floor(secs / 3600)
+    const m = Math.floor((secs % 3600) / 60)
+    if (h > 0) return `${h}h${m > 0 ? m + 'm' : ''}`
+    return `${m}min`
+  }
   const maxMonthlyVol = Math.max(...monthlyData.map(m => m.volume), 1)
 
   return (
@@ -171,16 +179,25 @@ export default function StatsPage() {
       {history.length > 0 && (
         <>
           {/* ── Cette semaine ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
-            <div className="card text-center" style={{ padding: 16 }}>
-              <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--accent)' }}>
-                {fmtVolume(globalStats.weekVolume)}
+          <div className="card" style={{ marginBottom: 20, padding: 16 }}>
+            <div className="text-xs text-muted font-bold" style={{ marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Cette semaine</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)' }}>
+                  {fmtVolume(globalStats.weekVolume)}
+                </div>
+                <div className="text-xs text-muted" style={{ marginTop: 2 }}>Soulevé</div>
               </div>
-              <div className="text-xs text-muted" style={{ marginTop: 4 }}>Poids soulevé cette semaine</div>
-            </div>
-            <div className="card text-center" style={{ padding: 16 }}>
-              <div style={{ fontSize: 26, fontWeight: 800 }}>{globalStats.weekSessions}</div>
-              <div className="text-xs text-muted" style={{ marginTop: 4 }}>Séance{globalStats.weekSessions !== 1 ? 's' : ''} cette semaine</div>
+              <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>{globalStats.weekSessions}</div>
+                <div className="text-xs text-muted" style={{ marginTop: 2 }}>Séance{globalStats.weekSessions !== 1 ? 's' : ''}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--success)' }}>
+                  {globalStats.weekDurationSeconds > 0 ? fmtDuration(globalStats.weekDurationSeconds) : '–'}
+                </div>
+                <div className="text-xs text-muted" style={{ marginTop: 2 }}>Temps</div>
+              </div>
             </div>
           </div>
 
@@ -213,7 +230,7 @@ export default function StatsPage() {
           <div className="card" style={{ marginBottom: 20 }}>
             <div className="font-bold text-sm" style={{ marginBottom: 4 }}>📅 Progression mensuelle</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              {[['sessions', '🔥 Séances'], ['volume', '⚖️ Volume']].map(([key, label]) => (
+              {[['sessions', '🔥 Séances'], ['volume', '⚖️ Volume'], ['duration', '⏱ Temps']].map(([key, label]) => (
                 <button key={key} onClick={() => setChartMetric(key === chartMetric ? chartMetric : key)}
                   style={{
                     padding: '4px 12px', borderRadius: 20, fontSize: 12,
@@ -233,7 +250,7 @@ export default function StatsPage() {
                   <YAxis hide />
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }}
-                    formatter={v => [chartMetric === 'sessions' ? `${v} séances` : fmtVolume(v), '']}
+                    formatter={v => [chartMetric === 'sessions' ? `${v} séances` : chartMetric === 'duration' ? `${v} min` : fmtVolume(v), '']}
                     labelFormatter={() => ''}
                   />
                   <Bar dataKey={chartMetric} radius={[4, 4, 0, 0]}>
