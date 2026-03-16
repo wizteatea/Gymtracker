@@ -185,6 +185,7 @@ export default function SessionPage() {
   const finishing = useRef(false)
   const saveDebounce = useRef(null)    // debounce localStorage writes
   const setsDataRef = useRef(setsData) // accès sans dépendance dans les callbacks
+  const didFinish = useRef(false)      // bloque toute sauvegarde après fin/abandon
 
   // Sync ref with state
   useEffect(() => { setsDataRef.current = setsData }, [setsData])
@@ -193,8 +194,11 @@ export default function SessionPage() {
 
   // ── Sauvegarde en localStorage avec debounce (max 1 fois / 2s) ──
   const scheduleSave = useCallback((data) => {
+    if (didFinish.current) return   // ne jamais sauvegarder après fin/abandon
     clearTimeout(saveDebounce.current)
-    saveDebounce.current = setTimeout(() => saveSession(data), 2000)
+    saveDebounce.current = setTimeout(() => {
+      if (!didFinish.current) saveSession(data)
+    }, 2000)
   }, [])
 
   // ── Helper : démarrer le chrono de repos ──
@@ -258,6 +262,8 @@ export default function SessionPage() {
     if (workout && setsData.length > 0 && !finished) {
       scheduleSave({ profileId, workoutId, currentExIdx, setsData, sessionStart })
     }
+    // Cleanup : annule le timeout si le composant se démonte
+    return () => { clearTimeout(saveDebounce.current) }
   }, [profileId, workoutId, currentExIdx, setsData, sessionStart, workout, finished, scheduleSave])
 
   // ── Chrono de repos (basé sur timestamp absolu) ──
@@ -368,6 +374,8 @@ export default function SessionPage() {
   const finishSession = useCallback(() => {
     if (finishing.current) return
     finishing.current = true
+    didFinish.current = true
+    clearTimeout(saveDebounce.current)
     const currentSets = setsDataRef.current
     const allDone = currentSets.every(sets => sets.every(s => s.done))
     if (!allDone) {
@@ -392,6 +400,7 @@ export default function SessionPage() {
 
   const abandonSession = useCallback(() => {
     if (confirm('Abandonner la séance ? Ta progression sera perdue.')) {
+      didFinish.current = true
       clearTimeout(saveDebounce.current)
       clearSession()
       cancelNotification(notifTimer.current)
