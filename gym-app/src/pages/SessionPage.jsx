@@ -43,19 +43,37 @@ async function requestNotifPermission() {
   }
 }
 
-function scheduleNotification(secondsLeft, exerciseName) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return null
-  const t = setTimeout(() => {
-    new Notification('GymTracker — Repos terminé !', {
-      body: `Prochain : ${exerciseName}`,
-      icon: '/icon.svg',
-    })
-  }, secondsLeft * 1000)
-  return t
+// Envoie le timer au Service Worker (plus fiable en arrière-plan)
+async function scheduleSwNotification(secondsLeft, exerciseName) {
+  if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return
+  const reg = await navigator.serviceWorker.ready
+  reg.active?.postMessage({ type: 'SCHEDULE_REST', delayMs: secondsLeft * 1000, nextExercise: exerciseName })
 }
 
-function cancelNotification(t) {
-  if (t) clearTimeout(t)
+async function cancelSwNotification() {
+  if (!('serviceWorker' in navigator)) return
+  const reg = await navigator.serviceWorker.ready
+  reg.active?.postMessage({ type: 'CANCEL_REST' })
+}
+
+// Bip sonore via Web Audio API (pas de fichier externe)
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const times = [0, 0.35, 0.7]
+    times.forEach(t => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.value = 880
+      osc.type = 'sine'
+      gain.gain.setValueAtTime(0.6, ctx.currentTime + t)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.25)
+      osc.start(ctx.currentTime + t)
+      osc.stop(ctx.currentTime + t + 0.25)
+    })
+  } catch (_) {}
 }
 
 // ─── Timer d'élapsed séparé pour éviter de re-rendre toute la page chaque seconde ───
@@ -180,7 +198,7 @@ export default function SessionPage() {
   // Refs — pas de re-render quand ils changent
   const restInterval = useRef(null)
   const restEndRef = useRef(null)
-  const notifTimer = useRef(null)
+
   const initialized = useRef(false)
   const finishing = useRef(false)
   const saveDebounce = useRef(null)    // debounce localStorage writes
@@ -204,11 +222,11 @@ export default function SessionPage() {
   // ── Helper : démarrer le chrono de repos ──
   const startRest = useCallback((seconds, nextExName) => {
     clearInterval(restInterval.current)
-    cancelNotification(notifTimer.current)
+    cancelSwNotification()
     const endTime = Date.now() + seconds * 1000
     restEndRef.current = endTime
     localStorage.setItem(REST_END_KEY, endTime.toString())
-    notifTimer.current = scheduleNotification(seconds, nextExName || 'prochain exercice')
+    scheduleSwNotification(seconds, nextExName)
     setRestTotal(seconds)
     setRestTime(seconds)
     setShowRest(true)
@@ -268,20 +286,29 @@ export default function SessionPage() {
 
   // ── Chrono de repos (basé sur timestamp absolu) ──
   useEffect(() => {
-    if (!showRest) return
+    if (!showRest) {
+      document.title = 'GymTracker'
+      return
+    }
     const tick = () => {
       if (!restEndRef.current) return
       const remaining = Math.max(0, Math.round((restEndRef.current - Date.now()) / 1000))
       setRestTime(remaining)
+      // Titre de page = mini widget visible dans l'app switcher
+      document.title = remaining > 0 ? `⏱ ${formatTime(remaining)} — GymTracker` : '✅ Repos terminé !'
       if (remaining <= 0) {
         clearInterval(restInterval.current)
         localStorage.removeItem(REST_END_KEY)
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+        playBeep()
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300])
       }
     }
     tick()
     restInterval.current = setInterval(tick, 1000)
-    return () => clearInterval(restInterval.current)
+    return () => {
+      clearInterval(restInterval.current)
+      document.title = 'GymTracker'
+    }
   }, [showRest])
 
   // ── Recalcul immédiat quand la page redevient visible ──
@@ -294,7 +321,8 @@ export default function SessionPage() {
           setShowRest(false)
           restEndRef.current = null
           localStorage.removeItem(REST_END_KEY)
-          if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+          playBeep()
+          if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300])
         }
       }
     }
@@ -366,9 +394,10 @@ export default function SessionPage() {
   const stopRest = useCallback(() => {
     setShowRest(false)
     clearInterval(restInterval.current)
-    cancelNotification(notifTimer.current)
+    cancelSwNotification()
     restEndRef.current = null
     localStorage.removeItem(REST_END_KEY)
+    document.title = 'GymTracker'
   }, [])
 
   const finishSession = useCallback(() => {
@@ -393,7 +422,7 @@ export default function SessionPage() {
     })
     clearTimeout(saveDebounce.current)
     clearSession()
-    cancelNotification(notifTimer.current)
+    cancelSwNotification()
     refresh()
     setFinished(true)
   }, [profileId, workoutId, sessionStart, refresh])
@@ -403,7 +432,7 @@ export default function SessionPage() {
       didFinish.current = true
       clearTimeout(saveDebounce.current)
       clearSession()
-      cancelNotification(notifTimer.current)
+      cancelSwNotification()
       navigate('/')
     }
   }, [navigate])
