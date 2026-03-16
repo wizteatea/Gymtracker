@@ -4,11 +4,11 @@ import { DEFAULT_EXERCISES, MUSCLE_GROUPS } from '../data/exercises'
 import { getCustomExercises, addCustomExercise, getCustomMuscleGroups, addCustomMuscleGroup } from '../data/store'
 import { useApp } from '../context/AppContext'
 
-export default function ExercisePicker({ onSelect, onClose, selectedIds = [] }) {
+export default function ExercisePicker({ onSelect, onClose, selectedIds = [], initialCreating = false }) {
   const { profileId } = useApp()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState(initialCreating)
   const [newMuscle, setNewMuscle] = useState('poitrine')
   const [newType, setNewType] = useState('musculation')
   const [showNewMuscleForm, setShowNewMuscleForm] = useState(false)

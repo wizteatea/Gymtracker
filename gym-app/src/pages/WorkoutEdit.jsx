@@ -104,9 +104,14 @@ export default function WorkoutEdit() {
       {/* Exercises */}
       <div className="flex items-center justify-between mb-8 mt-16">
         <label className="form-label" style={{ margin: 0 }}>Exercices ({exercises.length})</label>
-        <button className="btn btn-primary btn-small" onClick={() => setShowPicker(true)}>
-          <Plus size={14} /> Ajouter
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-secondary btn-small" onClick={() => setShowPicker('create')}>
+            <Plus size={14} /> Créer
+          </button>
+          <button className="btn btn-primary btn-small" onClick={() => setShowPicker('search')}>
+            <Plus size={14} /> Ajouter
+          </button>
+        </div>
       </div>
 
       {exercises.length === 0 && (
@@ -246,6 +251,7 @@ export default function WorkoutEdit() {
           onSelect={addExercise}
           onClose={() => setShowPicker(false)}
           selectedIds={exercises.map(e => e.exerciseId)}
+          initialCreating={showPicker === 'create'}
         />
       )}
     </div>
