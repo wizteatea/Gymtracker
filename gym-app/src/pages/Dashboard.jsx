@@ -118,16 +118,21 @@ export default function Dashboard() {
       )}
 
       {/* Quick actions */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
         <button className="card" onClick={() => navigate('/workouts/new')}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 20, cursor: 'pointer' }}>
-          <Plus size={24} color="var(--accent)" />
-          <span className="text-sm font-bold">Créer une séance</span>
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 16, cursor: 'pointer' }}>
+          <Plus size={22} color="var(--accent)" />
+          <span className="text-xs font-bold" style={{ textAlign: 'center' }}>Créer une séance</span>
         </button>
         <button className="card" onClick={() => navigate('/exercises/new')}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 20, cursor: 'pointer' }}>
-          <Dumbbell size={24} color="var(--success)" />
-          <span className="text-sm font-bold">Créer un exercice</span>
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 16, cursor: 'pointer' }}>
+          <Dumbbell size={22} color="var(--success)" />
+          <span className="text-xs font-bold" style={{ textAlign: 'center' }}>Créer un exercice</span>
+        </button>
+        <button className="card" onClick={() => navigate('/calendar')}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 16, cursor: 'pointer' }}>
+          <Calendar size={22} color="var(--warning)" />
+          <span className="text-xs font-bold" style={{ textAlign: 'center' }}>Calendrier</span>
         </button>
       </div>
 

@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { Home, Dumbbell, Calendar, BarChart3, User } from 'lucide-react'
+import { Home, Dumbbell, Calendar, BarChart3, User, TrendingUp } from 'lucide-react'
 import { AppProvider, useApp } from './context/AppContext'
 import LoginPage from './pages/LoginPage'
 import ProfileSetup from './pages/ProfileSetup'
@@ -11,6 +11,7 @@ import SessionPage from './pages/SessionPage'
 import HistoryPage from './pages/HistoryPage'
 import ProfilePage from './pages/ProfilePage'
 import ExerciseCreate from './pages/ExerciseCreate'
+import StatsPage from './pages/StatsPage'
 
 function AppContent() {
   const { user, authLoading, needsProfile, syncing } = useApp()
@@ -61,6 +62,7 @@ function AppContent() {
         <Route path="/session" element={<SessionPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/exercises/new" element={<ExerciseCreate />} />
+        <Route path="/stats" element={<StatsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Routes>
 
@@ -72,8 +74,8 @@ function AppContent() {
           <NavLink to="/workouts" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <Dumbbell size={24} /><span>Séances</span>
           </NavLink>
-          <NavLink to="/calendar" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <Calendar size={24} /><span>Calendrier</span>
+          <NavLink to="/stats" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <TrendingUp size={24} /><span>Stats</span>
           </NavLink>
           <NavLink to="/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <BarChart3 size={24} /><span>Historique</span>
