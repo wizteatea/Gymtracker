@@ -54,12 +54,13 @@ export async function updateProfile(uid, data) {
 // ── Sync: pull everything from Firestore into localStorage ──
 export async function syncFromFirestore(uid) {
   try {
-    const [workoutsSnap, scheduleSnap, historySnap, customExSnap, customMusclesSnap] = await Promise.all([
+    const [workoutsSnap, scheduleSnap, historySnap, customExSnap, customMusclesSnap, weightSnap] = await Promise.all([
       getDocs(subCol(uid, 'workouts')),
       getDocs(subCol(uid, 'schedule')),
       getDocs(subCol(uid, 'history')),
       getDocs(subCol(uid, 'customExercises')),
       getDocs(subCol(uid, 'customMuscles')),
+      getDocs(subCol(uid, 'weightHistory')),
     ])
 
     const clean = (snap) => snap.docs.map(d => {
@@ -73,6 +74,7 @@ export async function syncFromFirestore(uid) {
     ls.set(`gym_history_${uid}`, clean(historySnap))
     ls.set(`gym_custom_exercises_${uid}`, clean(customExSnap))
     ls.set(`gym_custom_muscles_${uid}`, clean(customMusclesSnap))
+    ls.set(`gym_weight_${uid}`, clean(weightSnap))
     return true
   } catch (e) {
     console.warn('syncFromFirestore error:', e)
@@ -182,6 +184,24 @@ export function addCustomExercise(uid, exercise) {
   ls.set(`gym_custom_exercises_${uid}`, exercises)
   upsert(uid, 'customExercises', newEx)
   return newEx
+}
+
+// ── Weight history ──
+export function getWeightHistory(uid) { return ls.get(`gym_weight_${uid}`, []) }
+
+export function addWeightEntry(uid, weight, date) {
+  const history = getWeightHistory(uid)
+  const entry = { id: crypto.randomUUID(), weight: Number(weight), date: date || new Date().toISOString().slice(0, 10) }
+  history.unshift(entry)
+  history.sort((a, b) => b.date.localeCompare(a.date))
+  ls.set(`gym_weight_${uid}`, history)
+  upsert(uid, 'weightHistory', entry)
+  return entry
+}
+
+export function deleteWeightEntry(uid, id) {
+  ls.set(`gym_weight_${uid}`, getWeightHistory(uid).filter(e => e.id !== id))
+  remove(uid, 'weightHistory', id)
 }
 
 // ── Custom muscle groups ──
