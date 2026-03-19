@@ -154,6 +154,16 @@ export function removeScheduledWorkout(uid, scheduleId) {
   remove(uid, 'schedule', scheduleId)
 }
 
+export function completeScheduledWorkout(uid, scheduleId) {
+  const schedule = getSchedule(uid)
+  const idx = schedule.findIndex(s => s.id === scheduleId)
+  if (idx !== -1) {
+    schedule[idx] = { ...schedule[idx], completed: true }
+    ls.set(`gym_schedule_${uid}`, schedule)
+    upsert(uid, 'schedule', schedule[idx])
+  }
+}
+
 // ── History ──
 export function getHistory(uid) { return ls.get(`gym_history_${uid}`, []) }
 

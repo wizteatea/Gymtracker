@@ -100,7 +100,7 @@ export default function Dashboard() {
           <button
             className="btn"
             style={{ background: 'rgba(255,255,255,0.2)', color: 'white', backdropFilter: 'blur(4px)' }}
-            onClick={() => navigate('/session', { state: { workoutId: nextWorkout.id } })}
+            onClick={() => navigate('/session', { state: { workoutId: nextWorkout.id, scheduleId: nextSession.id } })}
           >
             <Play size={18} /> Démarrer la séance
           </button>

@@ -221,7 +221,7 @@ export default function CalendarPage() {
                   <div className="font-bold text-sm">{w.title}</div>
                   <div className="text-xs text-muted" style={{ marginTop: 2 }}>{w.exercises?.length || 0} exercices · Planifié</div>
                 </div>
-                <button onClick={() => navigate('/session', { state: { workoutId: w.id } })}
+                <button onClick={() => navigate('/session', { state: { workoutId: w.id, scheduleId: s.id } })}
                   style={{ background: 'var(--success-light)', color: 'var(--success)', border: 'none', borderRadius: 10, padding: '8px 10px', cursor: 'pointer' }}>
                   <Play size={18} />
                 </button>
@@ -375,7 +375,7 @@ export default function CalendarPage() {
                       <div className="font-bold text-sm">{w.title}</div>
                       <div className="text-xs text-muted">{w.exercises?.length || 0} exercices</div>
                     </div>
-                    <button onClick={() => navigate('/session', { state: { workoutId: w.id } })}
+                    <button onClick={() => navigate('/session', { state: { workoutId: w.id, scheduleId: s.id } })}
                       style={{ background: 'var(--success-light)', color: 'var(--success)', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}>
                       <Play size={16} />
                     </button>
@@ -445,7 +445,7 @@ export default function CalendarPage() {
                       <div className="font-bold text-sm">{item.workout.title}</div>
                       <div className="text-xs text-muted">{item.workout.exercises?.length || 0} exercices · Planifié</div>
                     </div>
-                    <button onClick={() => navigate('/session', { state: { workoutId: item.workout.id } })}
+                    <button onClick={() => navigate('/session', { state: { workoutId: item.workout.id, scheduleId: item.scheduleId } })}
                       style={{ background: 'var(--success-light)', color: 'var(--success)', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}>
                       <Play size={16} />
                     </button>

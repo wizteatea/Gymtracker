@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Check, Plus, Timer, RefreshCw, Minus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { getWorkouts, addSessionToHistory } from '../data/store'
+import { getWorkouts, addSessionToHistory, completeScheduledWorkout } from '../data/store'
 import ExercisePicker from '../components/ExercisePicker'
 
 const SESSION_KEY = 'gym_active_session'
@@ -171,10 +171,12 @@ export default function SessionPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const workoutIdFromNav = location.state?.workoutId
+  const scheduleIdFromNav = location.state?.scheduleId
 
   const saved = loadSession()
   const isResume = !workoutIdFromNav && saved && saved.profileId === profileId
   const workoutId = workoutIdFromNav || saved?.workoutId
+  const scheduleId = scheduleIdFromNav || saved?.scheduleId || null
 
   const [workout, setWorkout] = useState(null)
   const [currentBlockIdx, setCurrentBlockIdx] = useState(saved?.currentBlockIdx || 0)
@@ -237,48 +239,46 @@ export default function SessionPage() {
     setShowRest(true)
   }, [])
 
-  // ── Chargement du workout ──
+  // ── Chargement du workout (une seule fois) ──
   useEffect(() => {
-    if (finished) return
+    if (finished || initialized.current) return
     if (!workoutId) { navigate('/', { replace: true }); return }
     const workouts = getWorkouts(profileId)
     const w = workouts.find(ww => ww.id === workoutId)
     if (!w) { navigate('/', { replace: true }); return }
     setWorkout(w)
+    initialized.current = true
 
-    if (!initialized.current) {
-      initialized.current = true
-      if (isResume && saved?.setsData) {
-        setSetsData(saved.setsData)
-        setCurrentBlockIdx(saved.currentBlockIdx || 0)
-        const restEnd = localStorage.getItem(REST_END_KEY)
-        if (restEnd) {
-          const endTime = parseInt(restEnd)
-          const remaining = Math.round((endTime - Date.now()) / 1000)
-          if (remaining > 0) {
-            restEndRef.current = endTime
-            setRestTotal(remaining)
-            setRestTime(remaining)
-            setShowRest(true)
-          } else localStorage.removeItem(REST_END_KEY)
-        }
-      } else {
-        setSetsData(w.exercises.map(ex => {
-          if (ex.type === 'cardio')
-            return [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
-          return Array.from({ length: ex.sets }, () => ({
-            weight: '', reps: ex.timeMode ? 0 : ex.reps,
-            duration: ex.timeMode ? (ex.duration || 30) : 0, done: false,
-          }))
-        }))
+    if (isResume && saved?.setsData) {
+      setSetsData(saved.setsData)
+      setCurrentBlockIdx(saved.currentBlockIdx || 0)
+      const restEnd = localStorage.getItem(REST_END_KEY)
+      if (restEnd) {
+        const endTime = parseInt(restEnd)
+        const remaining = Math.round((endTime - Date.now()) / 1000)
+        if (remaining > 0) {
+          restEndRef.current = endTime
+          setRestTotal(remaining)
+          setRestTime(remaining)
+          setShowRest(true)
+        } else localStorage.removeItem(REST_END_KEY)
       }
+    } else {
+      setSetsData(w.exercises.map(ex => {
+        if (ex.type === 'cardio')
+          return [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
+        return Array.from({ length: ex.sets }, () => ({
+          weight: '', reps: ex.timeMode ? 0 : ex.reps,
+          duration: ex.timeMode ? (ex.duration || 30) : 0, done: false,
+        }))
+      }))
     }
   }, [workoutId, profileId, navigate, isResume, saved, finished])
 
   // ── Persistance ──
   useEffect(() => {
     if (workout && setsData.length > 0 && !finished)
-      scheduleSave({ profileId, workoutId, currentBlockIdx, setsData, sessionStart })
+      scheduleSave({ profileId, workoutId, scheduleId, currentBlockIdx, setsData, sessionStart })
     return () => clearTimeout(saveDebounce.current)
   }, [profileId, workoutId, currentBlockIdx, setsData, sessionStart, workout, finished, scheduleSave])
 
@@ -401,9 +401,10 @@ export default function SessionPage() {
       exercises: w.exercises.map((ex, i) => ({ ...ex, ...sessionOverrides[i], setsCompleted: currentSets[i] })),
       duration: formatDuration(durationSec), durationSeconds: durationSec,
     })
+    if (scheduleId) completeScheduledWorkout(profileId, scheduleId)
     clearSession(); cancelSwNotification(); releaseWakeLock(wakeLockRef)
     refresh(); setFinished(true)
-  }, [profileId, workoutId, sessionStart, refresh, sessionOverrides])
+  }, [profileId, workoutId, sessionStart, refresh, sessionOverrides, scheduleId])
 
   const abandonSession = useCallback(() => {
     if (confirm('Abandonner la séance ? Ta progression sera perdue.')) {
