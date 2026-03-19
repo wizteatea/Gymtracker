@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2, Save, Link, Clock } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { getWorkouts, createWorkout, updateWorkout } from '../data/store'
+import { getWorkouts, createWorkout, updateWorkout, getWorkoutCategories } from '../data/store'
 import ExercisePicker from '../components/ExercisePicker'
 
 export default function WorkoutEdit() {
@@ -14,7 +14,9 @@ export default function WorkoutEdit() {
   const [title, setTitle] = useState('')
   const [exercises, setExercises] = useState([])
   const [notes, setNotes] = useState('')
+  const [categoryId, setCategoryId] = useState('')
   const [showPicker, setShowPicker] = useState(false)
+  const categories = getWorkoutCategories(profileId)
 
   useEffect(() => {
     if (!isNew) {
@@ -24,6 +26,7 @@ export default function WorkoutEdit() {
         setTitle(w.title)
         setExercises(w.exercises || [])
         setNotes(w.notes || '')
+        setCategoryId(w.categoryId || '')
       }
     }
   }, [id, profileId, isNew])
@@ -67,7 +70,7 @@ export default function WorkoutEdit() {
       alert('Donne un titre à ton entraînement')
       return
     }
-    const data = { title: title.trim(), exercises, notes: notes.trim() }
+    const data = { title: title.trim(), exercises, notes: notes.trim(), categoryId: categoryId || null }
     if (isNew) {
       createWorkout(profileId, data)
     } else {
@@ -100,6 +103,23 @@ export default function WorkoutEdit() {
           placeholder="Ex: Push day, Leg day..."
         />
       </div>
+
+      {/* Category */}
+      {categories.length > 0 && (
+        <div className="form-group">
+          <label className="form-label">Catégorie</label>
+          <select
+            value={categoryId}
+            onChange={e => setCategoryId(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14 }}
+          >
+            <option value="">Sans catégorie</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Exercises */}
       <div className="flex items-center justify-between mb-8 mt-16">

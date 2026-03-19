@@ -54,13 +54,14 @@ export async function updateProfile(uid, data) {
 // ── Sync: pull everything from Firestore into localStorage ──
 export async function syncFromFirestore(uid) {
   try {
-    const [workoutsSnap, scheduleSnap, historySnap, customExSnap, customMusclesSnap, weightSnap] = await Promise.all([
+    const [workoutsSnap, scheduleSnap, historySnap, customExSnap, customMusclesSnap, weightSnap, categoriesSnap] = await Promise.all([
       getDocs(subCol(uid, 'workouts')),
       getDocs(subCol(uid, 'schedule')),
       getDocs(subCol(uid, 'history')),
       getDocs(subCol(uid, 'customExercises')),
       getDocs(subCol(uid, 'customMuscles')),
       getDocs(subCol(uid, 'weightHistory')),
+      getDocs(subCol(uid, 'workoutCategories')),
     ])
 
     const clean = (snap) => snap.docs.map(d => {
@@ -75,6 +76,7 @@ export async function syncFromFirestore(uid) {
     ls.set(`gym_custom_exercises_${uid}`, clean(customExSnap))
     ls.set(`gym_custom_muscles_${uid}`, clean(customMusclesSnap))
     ls.set(`gym_weight_${uid}`, clean(weightSnap))
+    ls.set(`gym_workout_categories_${uid}`, clean(categoriesSnap))
     return true
   } catch (e) {
     console.warn('syncFromFirestore error:', e)
@@ -212,6 +214,32 @@ export function addWeightEntry(uid, weight, date) {
 export function deleteWeightEntry(uid, id) {
   ls.set(`gym_weight_${uid}`, getWeightHistory(uid).filter(e => e.id !== id))
   remove(uid, 'weightHistory', id)
+}
+
+// ── Workout categories ──
+export function getWorkoutCategories(uid) { return ls.get(`gym_workout_categories_${uid}`, []) }
+
+export function addWorkoutCategory(uid, label) {
+  const cats = getWorkoutCategories(uid)
+  const cat = { id: crypto.randomUUID(), label: label.trim() }
+  cats.push(cat)
+  ls.set(`gym_workout_categories_${uid}`, cats)
+  upsert(uid, 'workoutCategories', cat)
+  return cat
+}
+
+export function deleteWorkoutCategory(uid, catId) {
+  ls.set(`gym_workout_categories_${uid}`, getWorkoutCategories(uid).filter(c => c.id !== catId))
+  remove(uid, 'workoutCategories', catId)
+  // Remove category from workouts that had it
+  const workouts = getWorkouts(uid)
+  workouts.forEach(w => {
+    if (w.categoryId === catId) {
+      w.categoryId = null
+      upsert(uid, 'workouts', w)
+    }
+  })
+  ls.set(`gym_workouts_${uid}`, workouts)
 }
 
 // ── Custom muscle groups ──
