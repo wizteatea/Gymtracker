@@ -22,8 +22,27 @@ export default function CalendarPage() {
   const schedule = useMemo(() => getSchedule(profileId), [profileId, refreshKey])
   const history = useMemo(() => getHistory(profileId), [profileId, refreshKey])
 
-  const getDateSchedule = (date) => schedule.filter(s => s.date === format(date, 'yyyy-MM-dd'))
-  const getDateHistory = (date) => history.filter(h => h.completedAt.startsWith(format(date, 'yyyy-MM-dd')))
+  const scheduleByDate = useMemo(() => {
+    const map = {}
+    schedule.forEach(s => {
+      if (!map[s.date]) map[s.date] = []
+      map[s.date].push(s)
+    })
+    return map
+  }, [schedule])
+
+  const historyByDate = useMemo(() => {
+    const map = {}
+    history.forEach(h => {
+      const key = h.completedAt.slice(0, 10)
+      if (!map[key]) map[key] = []
+      map[key].push(h)
+    })
+    return map
+  }, [history])
+
+  const getDateSchedule = (date) => scheduleByDate[format(date, 'yyyy-MM-dd')] || []
+  const getDateHistory = (date) => historyByDate[format(date, 'yyyy-MM-dd')] || []
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 })

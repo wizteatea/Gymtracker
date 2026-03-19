@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Check, Plus, Timer, RefreshCw, Minus } from 'lucide-react'
+import { ArrowLeft, Check, Plus, Timer, RefreshCw, Minus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { getWorkouts, addSessionToHistory } from '../data/store'
 import ExercisePicker from '../components/ExercisePicker'
@@ -63,9 +63,18 @@ async function cancelSwNotification() {
   reg.active?.postMessage({ type: 'CANCEL_REST' })
 }
 
+let _audioCtx = null
+function getAudioCtx() {
+  if (!_audioCtx || _audioCtx.state === 'closed') {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  }
+  if (_audioCtx.state === 'suspended') _audioCtx.resume()
+  return _audioCtx
+}
+
 function playBeep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const ctx = getAudioCtx()
     ;[0, 0.35, 0.7].forEach(t => {
       const osc = ctx.createOscillator(), gain = ctx.createGain()
       osc.connect(gain); gain.connect(ctx.destination)
@@ -79,7 +88,7 @@ function playBeep() {
 
 function playWarningBeep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const ctx = getAudioCtx()
     const osc = ctx.createOscillator(), gain = ctx.createGain()
     osc.connect(gain); gain.connect(ctx.destination)
     osc.frequency.value = 660; osc.type = 'sine'
@@ -177,6 +186,7 @@ export default function SessionPage() {
   const [finished, setFinished] = useState(false)
   const [changePickerForIdx, setChangePickerForIdx] = useState(null) // exIdx ou null
   const [sessionOverrides, setSessionOverrides] = useState({})
+  const [showAddPicker, setShowAddPicker] = useState(false)
 
   const restInterval = useRef(null)
   const restEndRef = useRef(null)
@@ -404,6 +414,76 @@ export default function SessionPage() {
     }
   }, [navigate])
 
+  // ── Déplacer un bloc (superset ou exercice seul) vers le haut/bas ──
+  const moveBlock = useCallback((blockIdx, direction) => {
+    const targetIdx = blockIdx + direction
+    if (targetIdx < 0 || targetIdx >= blocksRef.current.length) return
+    const allBlocks = [...blocksRef.current]
+    const tmp = allBlocks[blockIdx]
+    allBlocks[blockIdx] = allBlocks[targetIdx]
+    allBlocks[targetIdx] = tmp
+    const newOrder = allBlocks.flat()
+    setWorkout(prev => ({
+      ...prev,
+      exercises: newOrder.map(i => prev.exercises[i]),
+    }))
+    setSetsData(prev => newOrder.map(i => prev[i]))
+    setSessionOverrides(prev => {
+      const remapped = {}
+      newOrder.forEach((oldIdx, newIdx) => {
+        if (prev[oldIdx]) remapped[newIdx] = prev[oldIdx]
+      })
+      return remapped
+    })
+    setCurrentBlockIdx(targetIdx)
+  }, [])
+
+  // ── Supprimer un exercice (avec confirmation) ──
+  const deleteExercise = useCallback((exIdx) => {
+    if (!confirm('Supprimer cet exercice de la séance ?')) return
+    setWorkout(prev => ({
+      ...prev,
+      exercises: prev.exercises.filter((_, i) => i !== exIdx),
+    }))
+    setSetsData(prev => prev.filter((_, i) => i !== exIdx))
+    setSessionOverrides(prev => {
+      const remapped = {}
+      Object.entries(prev).forEach(([key, val]) => {
+        const k = Number(key)
+        if (k < exIdx) remapped[k] = val
+        else if (k > exIdx) remapped[k - 1] = val
+      })
+      return remapped
+    })
+  }, [])
+
+  // ── Ajouter un exercice pendant la séance ──
+  const addNewExercise = useCallback((newEx) => {
+    const isCardio = newEx.type === 'cardio'
+    setWorkout(prev => ({
+      ...prev,
+      exercises: [...prev.exercises, {
+        exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle,
+        type: newEx.type, sets: 3, reps: 10, rest: 90, superset: false,
+        timeMode: false,
+      }],
+    }))
+    setSetsData(prev => [
+      ...prev,
+      isCardio
+        ? [{ duration: 0, distance: 0, calories: 0, done: false }]
+        : Array.from({ length: 3 }, () => ({ weight: '', reps: 10, duration: 0, done: false })),
+    ])
+    setShowAddPicker(false)
+  }, [])
+
+  // ── Clamp currentBlockIdx si des blocs ont été supprimés ──
+  useEffect(() => {
+    if (blocks.length > 0 && currentBlockIdx >= blocks.length) {
+      setCurrentBlockIdx(blocks.length - 1)
+    }
+  }, [blocks, currentBlockIdx])
+
   const changeExercise = useCallback((newEx) => {
     const idx = changePickerForIdx
     if (idx === null) return
@@ -461,9 +541,19 @@ export default function SessionPage() {
       <div className="flex items-center justify-between mb-12">
         <button onClick={() => setCurrentBlockIdx(i => Math.max(0, i - 1))} disabled={currentBlockIdx === 0}
           style={{ background: 'none', color: currentBlockIdx === 0 ? 'var(--text-muted)' : 'var(--text)', padding: 8, fontSize: 20 }}>◀</button>
-        <div className="text-center text-xs text-muted">
-          Bloc {currentBlockIdx + 1} / {blocks.length}
-          {currentBlock.length > 1 && <span style={{ color: 'var(--accent)', fontWeight: 700, marginLeft: 6 }}>🔗 SUPERSET</span>}
+        <div className="flex items-center gap-8">
+          <button onClick={() => moveBlock(currentBlockIdx, -1)} disabled={currentBlockIdx === 0}
+            style={{ background: 'none', padding: 4, color: currentBlockIdx === 0 ? 'var(--text-muted)' : 'var(--accent)', opacity: currentBlockIdx === 0 ? 0.3 : 1 }}>
+            <ChevronUp size={18} />
+          </button>
+          <div className="text-center text-xs text-muted">
+            Bloc {currentBlockIdx + 1} / {blocks.length}
+            {currentBlock.length > 1 && <span style={{ color: 'var(--accent)', fontWeight: 700, marginLeft: 6 }}>🔗 SUPERSET</span>}
+          </div>
+          <button onClick={() => moveBlock(currentBlockIdx, 1)} disabled={isLastBlock}
+            style={{ background: 'none', padding: 4, color: isLastBlock ? 'var(--text-muted)' : 'var(--accent)', opacity: isLastBlock ? 0.3 : 1 }}>
+            <ChevronDown size={18} />
+          </button>
         </div>
         <button onClick={() => setCurrentBlockIdx(i => Math.min(blocks.length - 1, i + 1))} disabled={isLastBlock}
           style={{ background: 'none', color: isLastBlock ? 'var(--text-muted)' : 'var(--text)', padding: 8, fontSize: 20 }}>▶</button>
@@ -480,16 +570,24 @@ export default function SessionPage() {
           <div key={exIdx}>
             {/* Carte exercice */}
             <div className="card" style={{ marginBottom: 4, borderLeft: isSuperset ? '3px solid var(--accent)' : undefined }}>
-              {/* Nom + bouton changer */}
+              {/* Nom + boutons changer / supprimer */}
               <div className="flex items-center justify-between mb-10">
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="font-bold" style={{ fontSize: 17 }}>{ex.name}</div>
                   <div className="text-xs text-muted">{ex.muscle}</div>
                 </div>
-                <button onClick={() => setChangePickerForIdx(exIdx)}
-                  style={{ background: 'none', color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <RefreshCw size={11} /> Changer
-                </button>
+                <div className="flex items-center gap-8">
+                  <button onClick={() => setChangePickerForIdx(exIdx)}
+                    style={{ background: 'none', color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <RefreshCw size={11} /> Changer
+                  </button>
+                  {workout.exercises.length > 1 && (
+                    <button onClick={() => deleteExercise(exIdx)}
+                      style={{ background: 'none', color: 'var(--danger)', padding: 4, display: 'flex', alignItems: 'center' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {ex.type === 'cardio' ? (
@@ -535,6 +633,11 @@ export default function SessionPage() {
         )
       })}
 
+      {/* Ajouter un exercice */}
+      <button className="btn btn-secondary mt-8" style={{ fontSize: 13 }} onClick={() => setShowAddPicker(true)}>
+        <Plus size={14} /> Ajouter un exercice
+      </button>
+
       {/* Bouton suivant */}
       {allBlockDone && !isLastBlock && (
         <button className="btn btn-primary mt-16" onClick={() => setCurrentBlockIdx(i => i + 1)}>
@@ -560,8 +663,7 @@ export default function SessionPage() {
               <circle cx="60" cy="60" r="54" fill="none" stroke="var(--accent)" strokeWidth="6"
                 strokeLinecap="round"
                 strokeDasharray={`${2 * Math.PI * 54}`}
-                strokeDashoffset={`${2 * Math.PI * 54 * (1 - (restTotal > 0 ? restTime / restTotal : 0))}`}
-                style={{ transition: 'stroke-dashoffset 1s linear' }} />
+                strokeDashoffset={`${2 * Math.PI * 54 * (1 - (restTotal > 0 ? restTime / restTotal : 0))}`} />
             </svg>
           </div>
           <div className="flex gap-12">
@@ -582,6 +684,10 @@ export default function SessionPage() {
 
       {changePickerForIdx !== null && (
         <ExercisePicker onSelect={changeExercise} onClose={() => setChangePickerForIdx(null)} selectedIds={[]} />
+      )}
+
+      {showAddPicker && (
+        <ExercisePicker onSelect={addNewExercise} onClose={() => setShowAddPicker(false)} selectedIds={[]} />
       )}
     </div>
   )

@@ -120,11 +120,6 @@ a {
   border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 12px;
-  transition: transform var(--transition);
-}
-
-.card:active {
-  transform: scale(0.98);
 }
 
 /* Buttons */

@@ -12,11 +12,23 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return
+  const url = e.request.url
+  if (
+    url.includes('firestore.googleapis.com') ||
+    url.includes('firebase') ||
+    url.includes('googleapis.com') ||
+    url.includes('google-analytics') ||
+    url.includes('/api/')
+  ) {
+    return
+  }
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        const clone = res.clone()
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone))
+        if (res.ok && res.type === 'basic') {
+          const clone = res.clone()
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone))
+        }
         return res
       })
       .catch(() => caches.match(e.request))

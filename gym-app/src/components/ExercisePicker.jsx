@@ -16,7 +16,7 @@ export default function ExercisePicker({ onSelect, onClose, selectedIds = [], in
   const [newMuscleEmoji, setNewMuscleEmoji] = useState('💪')
   const [customMuscles, setCustomMuscles] = useState(() => getCustomMuscleGroups(profileId))
 
-  const customExercises = getCustomExercises(profileId)
+  const customExercises = useMemo(() => getCustomExercises(profileId), [profileId])
   const allMuscleGroups = useMemo(() => [...MUSCLE_GROUPS, ...customMuscles], [customMuscles])
   const allExercises = useMemo(() => [...DEFAULT_EXERCISES, ...customExercises], [customExercises])
 

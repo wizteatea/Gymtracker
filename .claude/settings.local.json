@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npm create:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git rebase:*)"
     ]
   }
 }
