@@ -246,7 +246,15 @@ export default function SessionPage() {
     const workouts = getWorkouts(profileId)
     const w = workouts.find(ww => ww.id === workoutId)
     if (!w) { navigate('/', { replace: true }); return }
-    setWorkout(w)
+    // Restore modified exercises if session was modified (add/delete), otherwise use original workout
+    if (isResume && saved?.modifiedExercises) {
+      setWorkout({ ...w, exercises: saved.modifiedExercises })
+    } else {
+      setWorkout(w)
+    }
+    if (isResume && saved?.sessionOverrides) {
+      setSessionOverrides(saved.sessionOverrides)
+    }
     initialized.current = true
 
     if (isResume && saved?.setsData) {
@@ -278,7 +286,7 @@ export default function SessionPage() {
   // ── Persistance ──
   useEffect(() => {
     if (workout && setsData.length > 0 && !finished)
-      scheduleSave({ profileId, workoutId, scheduleId, currentBlockIdx, setsData, sessionStart })
+      scheduleSave({ profileId, workoutId, scheduleId, currentBlockIdx, setsData, sessionStart, modifiedExercises: workout.exercises, sessionOverrides })
     return () => clearTimeout(saveDebounce.current)
   }, [profileId, workoutId, currentBlockIdx, setsData, sessionStart, workout, finished, scheduleSave])
 
@@ -439,36 +447,46 @@ export default function SessionPage() {
     setCurrentBlockIdx(targetIdx)
   }, [])
 
-  // ── Supprimer un exercice (avec confirmation) ──
-  const deleteExercise = useCallback((exIdx) => {
-    if (!confirm('Supprimer cet exercice de la séance ?')) return
+  // ── Supprimer le bloc courant (avec confirmation) ──
+  const deleteBlock = useCallback(() => {
+    const block = blocksRef.current[currentBlockIdx]
+    if (!block || blocksRef.current.length <= 1) return
+    if (!confirm('Supprimer ce bloc de la séance ?')) return
+    const toRemove = new Set(block)
     setWorkout(prev => ({
       ...prev,
-      exercises: prev.exercises.filter((_, i) => i !== exIdx),
+      exercises: prev.exercises.filter((_, i) => !toRemove.has(i)),
     }))
-    setSetsData(prev => prev.filter((_, i) => i !== exIdx))
+    setSetsData(prev => prev.filter((_, i) => !toRemove.has(i)))
     setSessionOverrides(prev => {
       const remapped = {}
-      Object.entries(prev).forEach(([key, val]) => {
-        const k = Number(key)
-        if (k < exIdx) remapped[k] = val
-        else if (k > exIdx) remapped[k - 1] = val
-      })
+      let shift = 0
+      for (let i = 0; i < (workoutRef.current?.exercises?.length || 0); i++) {
+        if (toRemove.has(i)) { shift++; continue }
+        if (prev[i]) remapped[i - shift] = prev[i]
+      }
       return remapped
     })
-  }, [])
+    setCurrentBlockIdx(idx => Math.min(idx, blocksRef.current.length - 2))
+  }, [currentBlockIdx])
 
-  // ── Ajouter un exercice pendant la séance ──
+  // ── Ajouter un exercice pendant la séance (nouveau bloc) ──
   const addNewExercise = useCallback((newEx) => {
     const isCardio = newEx.type === 'cardio'
-    setWorkout(prev => ({
-      ...prev,
-      exercises: [...prev.exercises, {
-        exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle,
-        type: newEx.type, sets: 3, reps: 10, rest: 90, superset: false,
-        timeMode: false,
-      }],
-    }))
+    setWorkout(prev => {
+      const updated = {
+        ...prev,
+        exercises: [...prev.exercises, {
+          exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle,
+          type: newEx.type, sets: 3, reps: 10, rest: 90, superset: false,
+          timeMode: false,
+        }],
+      }
+      // Navigate to the new block after state updates
+      const newBlocks = computeBlocks(updated.exercises)
+      setTimeout(() => setCurrentBlockIdx(newBlocks.length - 1), 0)
+      return updated
+    })
     setSetsData(prev => [
       ...prev,
       isCardio
@@ -555,6 +573,12 @@ export default function SessionPage() {
             style={{ background: 'none', padding: 4, color: isLastBlock ? 'var(--text-muted)' : 'var(--accent)', opacity: isLastBlock ? 0.3 : 1 }}>
             <ChevronDown size={18} />
           </button>
+          {blocks.length > 1 && (
+            <button onClick={deleteBlock}
+              style={{ background: 'none', padding: 4, color: 'var(--danger)', display: 'flex', alignItems: 'center' }}>
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
         <button onClick={() => setCurrentBlockIdx(i => Math.min(blocks.length - 1, i + 1))} disabled={isLastBlock}
           style={{ background: 'none', color: isLastBlock ? 'var(--text-muted)' : 'var(--text)', padding: 8, fontSize: 20 }}>▶</button>
@@ -577,18 +601,10 @@ export default function SessionPage() {
                   <div className="font-bold" style={{ fontSize: 17 }}>{ex.name}</div>
                   <div className="text-xs text-muted">{ex.muscle}</div>
                 </div>
-                <div className="flex items-center gap-8">
-                  <button onClick={() => setChangePickerForIdx(exIdx)}
-                    style={{ background: 'none', color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <RefreshCw size={11} /> Changer
-                  </button>
-                  {workout.exercises.length > 1 && (
-                    <button onClick={() => deleteExercise(exIdx)}
-                      style={{ background: 'none', color: 'var(--danger)', padding: 4, display: 'flex', alignItems: 'center' }}>
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
+                <button onClick={() => setChangePickerForIdx(exIdx)}
+                  style={{ background: 'none', color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <RefreshCw size={11} /> Changer
+                </button>
               </div>
 
               {ex.type === 'cardio' ? (
