@@ -137,7 +137,7 @@ const ElapsedTimer = memo(function ElapsedTimer({ sessionStart }) {
 })
 
 // ─── Ligne de série mémoïsée ───
-const SetRow = memo(function SetRow({ exIdx, set, setIdx, timeMode, canRemove, onUpdate, onValidate, onRemove }) {
+const SetRow = memo(function SetRow({ exIdx, set, setIdx, timeMode, canRemove, lastWeight, onUpdate, onValidate, onRemove }) {
   return (
     <div className="flex items-center gap-6 mb-6"
       style={{
@@ -148,11 +148,19 @@ const SetRow = memo(function SetRow({ exIdx, set, setIdx, timeMode, canRemove, o
       <div style={{ width: 32, textAlign: 'center', fontWeight: 700, fontSize: 13, color: 'var(--text-muted)' }}>
         {setIdx + 1}
       </div>
-      <input type="text" inputMode="decimal" value={set.weight}
-        onChange={e => onUpdate(exIdx, setIdx, 'weight', e.target.value)}
-        style={{ flex: 1, textAlign: 'center', padding: '10px 4px', fontSize: 18, fontWeight: 700,
-          background: set.done ? 'transparent' : 'var(--bg-input)', borderRadius: 8 }}
-        placeholder="0" />
+      <div style={{ flex: 1, position: 'relative' }}>
+        <input type="text" inputMode="decimal" value={set.weight}
+          onChange={e => onUpdate(exIdx, setIdx, 'weight', e.target.value)}
+          style={{ width: '100%', textAlign: 'center', padding: '10px 4px', fontSize: 18, fontWeight: 700,
+            background: set.done ? 'transparent' : 'var(--bg-input)', borderRadius: 8 }}
+          placeholder={lastWeight || '0'} />
+        {lastWeight && !set.weight && (
+          <div style={{ position: 'absolute', bottom: -12, left: 0, right: 0, textAlign: 'center',
+            fontSize: 9, color: 'var(--text-muted)', opacity: 0.7 }}>
+            Préc: {lastWeight} kg
+          </div>
+        )}
+      </div>
       {timeMode ? (
         <input type="number" value={set.duration}
           onChange={e => onUpdate(exIdx, setIdx, 'duration', Number(e.target.value))}
@@ -291,9 +299,8 @@ export default function SessionPage() {
       setSetsData(w.exercises.map(ex => {
         if (ex.type === 'cardio')
           return [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
-        const lastWeight = getLastWeight(profileId, ex.exerciseId || ex.id)
         return Array.from({ length: ex.sets }, () => ({
-          weight: lastWeight, reps: ex.timeMode ? 0 : ex.reps,
+          weight: '', reps: ex.timeMode ? 0 : ex.reps,
           duration: ex.timeMode ? (ex.duration || 30) : 0, done: false,
         }))
       }))
@@ -490,7 +497,6 @@ export default function SessionPage() {
   // ── Ajouter un exercice pendant la séance (nouveau bloc) ──
   const addNewExercise = useCallback((newEx) => {
     const isCardio = newEx.type === 'cardio'
-    const lastWeight = isCardio ? '' : getLastWeight(profileId, newEx.id)
     setWorkout(prev => {
       const updated = {
         ...prev,
@@ -508,10 +514,10 @@ export default function SessionPage() {
       ...prev,
       isCardio
         ? [{ duration: 0, distance: 0, calories: 0, done: false }]
-        : Array.from({ length: 3 }, () => ({ weight: lastWeight, reps: 10, duration: 0, done: false })),
+        : Array.from({ length: 3 }, () => ({ weight: '', reps: 10, duration: 0, done: false })),
     ])
     setShowAddPicker(false)
-  }, [profileId])
+  }, [])
 
   // ── Clamp currentBlockIdx si des blocs ont été supprimés ──
   useEffect(() => {
@@ -524,9 +530,8 @@ export default function SessionPage() {
     const idx = changePickerForIdx
     if (idx === null) return
     setSessionOverrides(prev => ({ ...prev, [idx]: { exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle, type: newEx.type } }))
-    const lastWeight = newEx.type === 'cardio' ? '' : getLastWeight(profileId, newEx.id)
     setSetsData(prev => prev.map((arr, i) =>
-      i === idx ? Array.from({ length: arr.length }, () => ({ weight: lastWeight, reps: arr[0]?.reps || 10, duration: arr[0]?.duration || 30, done: false })) : arr
+      i === idx ? Array.from({ length: arr.length }, () => ({ weight: '', reps: arr[0]?.reps || 10, duration: arr[0]?.duration || 30, done: false })) : arr
     ))
     // Re-schedule notification if rest timer is active (show new exercise name)
     if (restEndRef.current) {
@@ -537,7 +542,7 @@ export default function SessionPage() {
       }
     }
     setChangePickerForIdx(null)
-  }, [changePickerForIdx, profileId])
+  }, [changePickerForIdx])
 
   if (!workout || blocks.length === 0) return null
 
@@ -614,6 +619,8 @@ export default function SessionPage() {
       {currentBlock.map((exIdx, blockPos) => {
         const rawEx = workout.exercises[exIdx]
         const ex = sessionOverrides[exIdx] ? { ...rawEx, ...sessionOverrides[exIdx] } : rawEx
+        const exId = ex.exerciseId || ex.id
+        const prevWeight = getLastWeight(profileId, exId)
         const sets = setsData[exIdx] || []
         const isSuperset = blockPos < currentBlock.length - 1
 
@@ -657,6 +664,7 @@ export default function SessionPage() {
                   {sets.map((set, setIdx) => (
                     <SetRow key={setIdx} exIdx={exIdx} set={set} setIdx={setIdx}
                       timeMode={ex.timeMode} canRemove={sets.length > 1}
+                      lastWeight={prevWeight}
                       onUpdate={updateSet} onValidate={validateSet} onRemove={removeSet} />
                   ))}
                   <button className="btn btn-secondary mt-4" style={{ fontSize: 13 }} onClick={() => addSet(exIdx)}>
