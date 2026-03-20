@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Check, Plus, Timer, RefreshCw, Minus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Check, Plus, Timer, RefreshCw, Minus, Trash2, ChevronUp, ChevronDown, Link2, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { getWorkouts, addSessionToHistory, completeScheduledWorkout, getHistory } from '../data/store'
 import ExercisePicker from '../components/ExercisePicker'
@@ -215,6 +215,7 @@ export default function SessionPage() {
   const [changePickerForIdx, setChangePickerForIdx] = useState(null) // exIdx ou null
   const [sessionOverrides, setSessionOverrides] = useState({})
   const [showAddPicker, setShowAddPicker] = useState(false)
+  const [showSupersetPicker, setShowSupersetPicker] = useState(false)
 
   const restInterval = useRef(null)
   const restEndRef = useRef(null)
@@ -521,6 +522,79 @@ export default function SessionPage() {
     setShowAddPicker(false)
   }, [])
 
+  // ── Ajouter un exercice en superset dans le bloc courant ──
+  const addToSuperset = useCallback((newEx) => {
+    const block = blocksRef.current[currentBlockIdx]
+    if (!block) return
+    const lastExIdx = block[block.length - 1]
+    const insertAt = lastExIdx + 1
+    const isCardio = newEx.type === 'cardio'
+    setWorkout(prev => {
+      const exercises = [...prev.exercises]
+      // Marquer le dernier exercice du bloc comme superset pour chaîner
+      exercises[lastExIdx] = { ...exercises[lastExIdx], superset: true }
+      // Insérer le nouvel exercice juste après
+      exercises.splice(insertAt, 0, {
+        exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle,
+        type: newEx.type, sets: 3, reps: 10, rest: exercises[lastExIdx].rest || 90,
+        superset: false, timeMode: false,
+      })
+      return { ...prev, exercises }
+    })
+    setSetsData(prev => {
+      const next = [...prev]
+      next.splice(insertAt, 0,
+        isCardio
+          ? [{ duration: 0, distance: 0, calories: 0, done: false }]
+          : Array.from({ length: 3 }, () => ({ weight: '', reps: 10, duration: 0, done: false }))
+      )
+      return next
+    })
+    setSessionOverrides(prev => {
+      const remapped = {}
+      Object.entries(prev).forEach(([key, val]) => {
+        const k = Number(key)
+        if (k < insertAt) remapped[k] = val
+        else remapped[k + 1] = val
+      })
+      return remapped
+    })
+    setShowSupersetPicker(false)
+  }, [currentBlockIdx])
+
+  // ── Retirer un exercice du bloc courant (superset) ──
+  const removeFromBlock = useCallback((exIdx) => {
+    const block = blocksRef.current[currentBlockIdx]
+    if (!block || block.length <= 1) return
+    if (!confirm('Retirer cet exercice du superset ?')) return
+    const posInBlock = block.indexOf(exIdx)
+    setWorkout(prev => {
+      const exercises = prev.exercises.filter((_, i) => i !== exIdx)
+      // Si on retire le premier du bloc, le suivant ne doit pas avoir superset changé
+      // Si on retire un du milieu/fin, le précédent doit garder superset sauf s'il devient dernier
+      if (posInBlock > 0 && posInBlock === block.length - 1) {
+        // On retire le dernier → l'avant-dernier ne doit plus être superset s'il n'a plus de suivant dans le bloc
+        const prevIdx = block[posInBlock - 1]
+        const adjustedIdx = prevIdx < exIdx ? prevIdx : prevIdx - 1
+        if (block.length === 2) {
+          // Plus de superset, un seul exercice reste
+          exercises[adjustedIdx] = { ...exercises[adjustedIdx], superset: false }
+        }
+      }
+      return { ...prev, exercises }
+    })
+    setSetsData(prev => prev.filter((_, i) => i !== exIdx))
+    setSessionOverrides(prev => {
+      const remapped = {}
+      Object.entries(prev).forEach(([key, val]) => {
+        const k = Number(key)
+        if (k < exIdx) remapped[k] = val
+        else if (k > exIdx) remapped[k - 1] = val
+      })
+      return remapped
+    })
+  }, [currentBlockIdx])
+
   // ── Clamp currentBlockIdx si des blocs ont été supprimés ──
   useEffect(() => {
     if (blocks.length > 0 && currentBlockIdx >= blocks.length) {
@@ -635,10 +709,18 @@ export default function SessionPage() {
                   <div className="font-bold" style={{ fontSize: 17 }}>{ex.name}</div>
                   <div className="text-xs text-muted">{ex.muscle}</div>
                 </div>
-                <button onClick={() => setChangePickerForIdx(exIdx)}
-                  style={{ background: 'none', color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <RefreshCw size={11} /> Changer
-                </button>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setChangePickerForIdx(exIdx)}
+                    style={{ background: 'none', color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <RefreshCw size={11} /> Changer
+                  </button>
+                  {currentBlock.length > 1 && (
+                    <button onClick={() => removeFromBlock(exIdx)}
+                      style={{ background: 'none', color: 'var(--danger)', padding: 4, display: 'flex', alignItems: 'center' }}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {ex.type === 'cardio' ? (
@@ -686,9 +768,14 @@ export default function SessionPage() {
       })}
 
       {/* Ajouter un exercice */}
-      <button className="btn btn-secondary mt-8" style={{ fontSize: 13 }} onClick={() => setShowAddPicker(true)}>
-        <Plus size={14} /> Ajouter un exercice
-      </button>
+      <div className="flex gap-8 mt-8">
+        <button className="btn btn-secondary" style={{ fontSize: 13, flex: 1 }} onClick={() => setShowAddPicker(true)}>
+          <Plus size={14} /> Ajouter un exercice
+        </button>
+        <button className="btn btn-secondary" style={{ fontSize: 13, flex: 1 }} onClick={() => setShowSupersetPicker(true)}>
+          <Link2 size={14} /> Superset
+        </button>
+      </div>
 
       {/* Bouton suivant */}
       {allBlockDone && !isLastBlock && (
@@ -743,6 +830,10 @@ export default function SessionPage() {
 
       {showAddPicker && (
         <ExercisePicker onSelect={addNewExercise} onClose={() => setShowAddPicker(false)} selectedIds={[]} />
+      )}
+
+      {showSupersetPicker && (
+        <ExercisePicker onSelect={addToSuperset} onClose={() => setShowSupersetPicker(false)} selectedIds={[]} />
       )}
     </div>
   )
