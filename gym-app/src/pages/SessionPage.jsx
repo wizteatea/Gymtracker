@@ -431,9 +431,12 @@ export default function SessionPage() {
     }
     const w = workoutRef.current
     const durationSec = Math.floor((Date.now() - sessionStart) / 1000)
+    const doneExercises = w.exercises
+      .map((ex, i) => ({ ...ex, ...sessionOverrides[i], setsCompleted: currentSets[i] }))
+      .filter(ex => ex.setsCompleted?.some(s => s.done))
     addSessionToHistory(profileId, {
       workoutId, workoutTitle: w.title,
-      exercises: w.exercises.map((ex, i) => ({ ...ex, ...sessionOverrides[i], setsCompleted: currentSets[i] })),
+      exercises: doneExercises,
       duration: formatDuration(durationSec), durationSeconds: durationSec,
     })
     if (scheduleId) completeScheduledWorkout(profileId, scheduleId)
@@ -637,7 +640,7 @@ export default function SessionPage() {
         <p className="text-secondary mb-16">{workout.title}</p>
         <div className="card w-full" style={{ display: 'flex', justifyContent: 'space-around', padding: 20 }}>
           <div className="text-center"><div style={{ fontSize: 24, fontWeight: 700 }}>{formatDuration(durationSec)}</div><div className="text-xs text-muted">Durée</div></div>
-          <div className="text-center"><div style={{ fontSize: 24, fontWeight: 700 }}>{workout.exercises.length}</div><div className="text-xs text-muted">Exercices</div></div>
+          <div className="text-center"><div style={{ fontSize: 24, fontWeight: 700 }}>{setsData.filter(sets => sets.some(s => s.done)).length}</div><div className="text-xs text-muted">Exercices</div></div>
           <div className="text-center"><div style={{ fontSize: 24, fontWeight: 700 }}>{setsData.reduce((sum, sets) => sum + sets.filter(s => s.done).length, 0)}</div><div className="text-xs text-muted">Séries</div></div>
         </div>
         <button className="btn btn-primary mt-16" onClick={() => navigate('/', { replace: true })}>Retour à l'accueil</button>
