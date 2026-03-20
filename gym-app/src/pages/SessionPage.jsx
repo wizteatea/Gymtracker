@@ -155,7 +155,7 @@ const SetRow = memo(function SetRow({ exIdx, set, setIdx, timeMode, canRemove, l
           onChange={e => onUpdate(exIdx, setIdx, 'weight', e.target.value)}
           style={{ width: '100%', textAlign: 'center', padding: '10px 4px', fontSize: 18, fontWeight: 700,
             background: set.done ? 'transparent' : 'var(--bg-input)', borderRadius: 8 }}
-          placeholder={lastWeight || '0'} />
+          placeholder="0" />
         {lastWeight && !set.weight && (
           <div style={{ position: 'absolute', bottom: -12, left: 0, right: 0, textAlign: 'center',
             fontSize: 9, color: 'var(--text-muted)', opacity: 0.7 }}>
