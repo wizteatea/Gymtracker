@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Check, Plus, Timer, RefreshCw, Minus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { getWorkouts, addSessionToHistory, completeScheduledWorkout } from '../data/store'
+import { getWorkouts, addSessionToHistory, completeScheduledWorkout, getHistory } from '../data/store'
 import ExercisePicker from '../components/ExercisePicker'
 
 const SESSION_KEY = 'gym_active_session'
@@ -35,6 +35,22 @@ function computeBlocks(exercises) {
     i++
   }
   return blocks
+}
+
+// Trouve le dernier poids utilisé pour un exercice donné dans l'historique
+function getLastWeight(uid, exerciseId) {
+  if (!uid || !exerciseId) return ''
+  const history = getHistory(uid)
+  for (const session of history) {
+    if (!session.exercises) continue
+    for (const ex of session.exercises) {
+      if ((ex.exerciseId || ex.id) === exerciseId && ex.setsCompleted) {
+        const lastDone = [...ex.setsCompleted].reverse().find(s => s.done && s.weight !== '' && s.weight != null)
+        if (lastDone) return lastDone.weight
+      }
+    }
+  }
+  return ''
 }
 
 function loadSession() {
@@ -275,8 +291,9 @@ export default function SessionPage() {
       setSetsData(w.exercises.map(ex => {
         if (ex.type === 'cardio')
           return [{ duration: ex.duration, distance: ex.distance, calories: ex.calories, done: false }]
+        const lastWeight = getLastWeight(profileId, ex.exerciseId || ex.id)
         return Array.from({ length: ex.sets }, () => ({
-          weight: '', reps: ex.timeMode ? 0 : ex.reps,
+          weight: lastWeight, reps: ex.timeMode ? 0 : ex.reps,
           duration: ex.timeMode ? (ex.duration || 30) : 0, done: false,
         }))
       }))
@@ -353,14 +370,14 @@ export default function SessionPage() {
     const isLastInBlock = block && exIdx === block[block.length - 1]
     if (isLastInBlock) {
       const w = workoutRef.current
-      const ex = w?.exercises?.[exIdx]
-      if (ex?.type !== 'cardio' && ex?.rest) {
-        // Trouve le prochain bloc
+      const rawEx = w?.exercises?.[exIdx]
+      const ex = sessionOverrides[exIdx] ? { ...rawEx, ...sessionOverrides[exIdx] } : rawEx
+      if (ex?.type !== 'cardio' && (ex?.rest || rawEx?.rest)) {
         const blockIdx = blocksRef.current.indexOf(block)
         const nextBlock = blocksRef.current[blockIdx + 1]
         const nextExIdx = nextBlock?.[0]
-        const nextExName = sessionOverrides[nextExIdx]?.name || w?.exercises?.[nextExIdx]?.name
-        startRest(ex.rest, nextExName)
+        const nextExName = nextExIdx != null ? (sessionOverrides[nextExIdx]?.name || w?.exercises?.[nextExIdx]?.name) : ''
+        startRest(rawEx?.rest || ex?.rest, nextExName)
       }
     }
   }, [startRest, sessionOverrides])
@@ -473,6 +490,7 @@ export default function SessionPage() {
   // ── Ajouter un exercice pendant la séance (nouveau bloc) ──
   const addNewExercise = useCallback((newEx) => {
     const isCardio = newEx.type === 'cardio'
+    const lastWeight = isCardio ? '' : getLastWeight(profileId, newEx.id)
     setWorkout(prev => {
       const updated = {
         ...prev,
@@ -482,7 +500,6 @@ export default function SessionPage() {
           timeMode: false,
         }],
       }
-      // Navigate to the new block after state updates
       const newBlocks = computeBlocks(updated.exercises)
       setTimeout(() => setCurrentBlockIdx(newBlocks.length - 1), 0)
       return updated
@@ -491,10 +508,10 @@ export default function SessionPage() {
       ...prev,
       isCardio
         ? [{ duration: 0, distance: 0, calories: 0, done: false }]
-        : Array.from({ length: 3 }, () => ({ weight: '', reps: 10, duration: 0, done: false })),
+        : Array.from({ length: 3 }, () => ({ weight: lastWeight, reps: 10, duration: 0, done: false })),
     ])
     setShowAddPicker(false)
-  }, [])
+  }, [profileId])
 
   // ── Clamp currentBlockIdx si des blocs ont été supprimés ──
   useEffect(() => {
@@ -507,11 +524,20 @@ export default function SessionPage() {
     const idx = changePickerForIdx
     if (idx === null) return
     setSessionOverrides(prev => ({ ...prev, [idx]: { exerciseId: newEx.id, name: newEx.name, muscle: newEx.muscle, type: newEx.type } }))
+    const lastWeight = newEx.type === 'cardio' ? '' : getLastWeight(profileId, newEx.id)
     setSetsData(prev => prev.map((arr, i) =>
-      i === idx ? Array.from({ length: arr.length }, () => ({ weight: '', reps: arr[0]?.reps || 10, duration: arr[0]?.duration || 30, done: false })) : arr
+      i === idx ? Array.from({ length: arr.length }, () => ({ weight: lastWeight, reps: arr[0]?.reps || 10, duration: arr[0]?.duration || 30, done: false })) : arr
     ))
+    // Re-schedule notification if rest timer is active (show new exercise name)
+    if (restEndRef.current) {
+      const remaining = Math.max(0, Math.round((restEndRef.current - Date.now()) / 1000))
+      if (remaining > 0) {
+        cancelSwNotification()
+        scheduleSwNotification(remaining, newEx.name)
+      }
+    }
     setChangePickerForIdx(null)
-  }, [changePickerForIdx])
+  }, [changePickerForIdx, profileId])
 
   if (!workout || blocks.length === 0) return null
 
@@ -671,6 +697,9 @@ export default function SessionPage() {
       {showRest && (
         <div className="rest-timer-overlay">
           <div className="text-secondary text-sm">Temps de repos</div>
+          {restNextExRef.current && (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Prochain : {restNextExRef.current}</div>
+          )}
           <div className="rest-timer-time" style={{ color: restTime === 0 ? 'var(--success)' : 'var(--text)' }}>
             {formatTime(restTime)}
           </div>
