@@ -38,13 +38,15 @@ function computeBlocks(exercises) {
 }
 
 // Trouve le dernier poids utilisé pour un exercice donné dans l'historique
-function getLastWeight(uid, exerciseId) {
-  if (!uid || !exerciseId) return ''
+function getLastWeight(uid, exerciseId, exerciseName) {
+  if (!uid || (!exerciseId && !exerciseName)) return ''
   const history = getHistory(uid)
   for (const session of history) {
     if (!session.exercises) continue
     for (const ex of session.exercises) {
-      if ((ex.exerciseId || ex.id) === exerciseId && ex.setsCompleted) {
+      const idMatch = exerciseId && (ex.exerciseId || ex.id) === exerciseId
+      const nameMatch = exerciseName && ex.name === exerciseName
+      if ((idMatch || nameMatch) && ex.setsCompleted) {
         const lastDone = [...ex.setsCompleted].reverse().find(s => s.done && s.weight !== '' && s.weight != null)
         if (lastDone) return lastDone.weight
       }
@@ -619,8 +621,7 @@ export default function SessionPage() {
       {currentBlock.map((exIdx, blockPos) => {
         const rawEx = workout.exercises[exIdx]
         const ex = sessionOverrides[exIdx] ? { ...rawEx, ...sessionOverrides[exIdx] } : rawEx
-        const exId = ex.exerciseId || ex.id
-        const prevWeight = getLastWeight(profileId, exId)
+        const prevWeight = getLastWeight(profileId, ex.exerciseId || ex.id, ex.name)
         const sets = setsData[exIdx] || []
         const isSuperset = blockPos < currentBlock.length - 1
 
