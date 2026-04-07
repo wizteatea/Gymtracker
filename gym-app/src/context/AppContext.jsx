@@ -30,14 +30,24 @@ export function AppProvider({ children }) {
       setUser(firebaseUser)
       setSyncing(true)
 
+      const uid = firebaseUser.uid
+
+      // Check localStorage first (works offline or if Firestore rules block)
+      const localProfile = (() => {
+        try { return JSON.parse(localStorage.getItem(`gym_profile_${uid}`) || 'null') } catch { return null }
+      })()
+
       // Try to load profile from Firestore
-      const existingProfile = await getProfileFromFirestore(firebaseUser.uid)
+      const firestoreProfile = await getProfileFromFirestore(uid)
+      const existingProfile = firestoreProfile || localProfile
 
       if (existingProfile) {
+        // Cache profile in localStorage for resilience
+        if (firestoreProfile) localStorage.setItem(`gym_profile_${uid}`, JSON.stringify(firestoreProfile))
         setProfile(existingProfile)
         setNeedsProfile(false)
         // Sync all data
-        await syncFromFirestore(firebaseUser.uid)
+        await syncFromFirestore(uid).catch(() => {})
         setRefreshKey(k => k + 1)
       } else {
         // First login — need to create profile
@@ -63,6 +73,7 @@ export function AppProvider({ children }) {
   }, [])
 
   const onProfileCreated = useCallback((p) => {
+    if (p?.id) localStorage.setItem(`gym_profile_${p.id}`, JSON.stringify(p))
     setProfile(p)
     setNeedsProfile(false)
     setRefreshKey(k => k + 1)
